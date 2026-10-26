@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -40,6 +41,7 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -48,10 +50,12 @@ from PyQt6.QtWidgets import (
 from chess_clock import ChessClock
 from chess_engine import ChessGame, Move
 from coach_ui import CoachDialog
+from fen_dialog import FenDialog
 from lan import LanManager
 from lan_ui import NetworkDialog
 from pgn_export import build_pgn
 from pgn_import import PGNImportError, extract_moves
+from session_store import clear_state, load_state, save_state
 from sound_player import SoundPlayer
 from stockfish_ai import (
     AnalysisResult,
@@ -1145,6 +1149,11 @@ class MainWindow(QMainWindow):
         self._unread_chat = 0
         self.online_time_control: Optional[tuple[int, int]] = None
         self._clock_pending_move = False
+        self._session_restoring = False
+        self._session_save_timer = QTimer(self)
+        self._session_save_timer.setSingleShot(True)
+        self._session_save_timer.setInterval(600)
+        self._session_save_timer.timeout.connect(self._save_session)
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(450)
         self._thinking_timer.timeout.connect(self._tick_thinking)
@@ -1180,18 +1189,21 @@ class MainWindow(QMainWindow):
         self.undo_button = QPushButton("悔棋")
         self.reset_button = QPushButton("重新开始")
         flip_button = QPushButton("翻转棋盘")
+        self.fen_button = QPushButton("FEN")
         export_button = QPushButton("导出 PGN")
         self.online_button = QPushButton("联机")
         join_button = QPushButton("连接")
         self.undo_button.clicked.connect(self._undo)
         self.reset_button.clicked.connect(self._new_game)
         flip_button.clicked.connect(self._flip_board)
+        self.fen_button.clicked.connect(self._show_fen_dialog)
         export_button.clicked.connect(self._export_pgn)
         self.online_button.clicked.connect(self._show_network_dialog)
         join_button.clicked.connect(self._show_network_dialog_connect)
         top_bar.addWidget(self.online_button)
         top_bar.addWidget(join_button)
         top_bar.addWidget(flip_button)
+        top_bar.addWidget(self.fen_button)
         top_bar.addWidget(export_button)
         top_bar.addWidget(self.undo_button)
         top_bar.addWidget(self.reset_button)
@@ -1386,6 +1398,30 @@ class MainWindow(QMainWindow):
         self.sound_checkbox.toggled.connect(self.sound_player.set_enabled)
         side_layout.addWidget(self.sound_checkbox)
 
+        clock_controls = QHBoxLayout()
+        clock_controls.setSpacing(6)
+        self.clock_checkbox = QCheckBox("棋钟")
+        self.clock_checkbox.setToolTip("开启后本局使用计时")
+        self.clock_minutes_spin = QSpinBox()
+        self.clock_minutes_spin.setRange(1, 180)
+        self.clock_minutes_spin.setValue(10)
+        self.clock_minutes_spin.setSuffix(" 分")
+        self.clock_increment_spin = QSpinBox()
+        self.clock_increment_spin.setRange(0, 60)
+        self.clock_increment_spin.setValue(0)
+        self.clock_increment_spin.setSuffix(" 秒/步")
+        self.clock_checkbox.toggled.connect(self._on_clock_toggled)
+        self.clock_minutes_spin.valueChanged.connect(
+            self._on_clock_settings_changed
+        )
+        self.clock_increment_spin.valueChanged.connect(
+            self._on_clock_settings_changed
+        )
+        clock_controls.addWidget(self.clock_checkbox)
+        clock_controls.addWidget(self.clock_minutes_spin, 1)
+        clock_controls.addWidget(self.clock_increment_spin, 1)
+        side_layout.addLayout(clock_controls)
+
         if self.engine_path is not None:
             engine_hint = QLabel(f"引擎：{self.engine_path.name}")
             engine_hint.setToolTip(str(self.engine_path))
@@ -1491,6 +1527,8 @@ class MainWindow(QMainWindow):
 
         self._load_settings()
         self._loading_settings = False
+        if not self._restore_session():
+            self._reset_local_clock()
         self._apply_mode_controls()
         self._refresh_locks()
         self._refresh_status()
@@ -1575,18 +1613,33 @@ class MainWindow(QMainWindow):
             return self.online_time_control
         return ONLINE_CLOCK_SECONDS, 0
 
+    def _local_clock_config(self) -> tuple[int, int]:
+        return (
+            self.clock_minutes_spin.value() * 60,
+            self.clock_increment_spin.value(),
+        )
+
+    def _active_clock_config(self) -> tuple[int, int]:
+        if self.online:
+            return self._online_clock_config()
+        return self._local_clock_config()
+
+    def _clock_is_enabled(self) -> bool:
+        return self.online or self.clock_checkbox.isChecked()
+
     def _update_clock_caption(self) -> None:
-        base, increment = self._online_clock_config()
+        base, increment = self._active_clock_config()
         minutes = max(1, base // 60)
+        prefix = "联机棋钟" if self.online else "棋钟"
         if increment:
             self.clock_caption.setText(
-                f"联机棋钟 · {minutes} 分钟 + {increment} 秒/步"
+                f"{prefix} · {minutes} 分钟 + {increment} 秒/步"
             )
         else:
-            self.clock_caption.setText(f"联机棋钟 · {minutes} 分钟包干")
+            self.clock_caption.setText(f"{prefix} · {minutes} 分钟包干")
 
     def _update_clock_labels(self) -> None:
-        if not self.online:
+        if not self._clock_is_enabled():
             self.clock_caption.hide()
             self.white_clock_label.hide()
             self.black_clock_label.hide()
@@ -1607,6 +1660,50 @@ class MainWindow(QMainWindow):
                 f"{prefix} {self.clock.display(color)}</span>"
             )
 
+    def _refresh_clock_controls(self) -> None:
+        online = self.online
+        enabled = self.clock_checkbox.isChecked()
+        self.clock_checkbox.setEnabled(not online)
+        editable = not online and enabled and not self.board.game.history
+        self.clock_minutes_spin.setEnabled(editable)
+        self.clock_increment_spin.setEnabled(editable)
+
+    def _on_clock_toggled(self, checked: bool) -> None:
+        if self._loading_settings or self.online:
+            return
+        self._reset_local_clock()
+        self._refresh_clock_controls()
+
+    def _on_clock_settings_changed(self, value: int) -> None:
+        if self._loading_settings or self.online:
+            return
+        if not self.board.game.history:
+            self._reset_local_clock()
+        self._refresh_clock_controls()
+
+    def _reset_local_clock(self) -> None:
+        if self.online:
+            return
+        self._clock_pending_move = False
+        if not self.clock_checkbox.isChecked():
+            self.clock.stop()
+            self._update_clock_labels()
+            self._refresh_clock_controls()
+            return
+
+        base, increment = self._local_clock_config()
+        self.clock.reset(base, increment)
+        game = self.board.game
+        if (
+            game.history
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            self.clock.start(game.turn)
+        self._update_clock_caption()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+
     def _refresh_online_actions(self) -> None:
         in_game = self.online and not self.board.game_over
         self.resign_button.setEnabled(in_game)
@@ -1626,7 +1723,9 @@ class MainWindow(QMainWindow):
         self.claim_draw_button.setEnabled(claimable)
 
     def _on_clock_flag(self, color: str) -> None:
-        if not self.online or self.board.game_over:
+        if self.board.game_over:
+            return
+        if not self.online and not self.clock_checkbox.isChecked():
             return
         self.clock.stop()
         self._draw_offer_pending = False
@@ -1634,8 +1733,9 @@ class MainWindow(QMainWindow):
         side = "白方" if color == "w" else "黑方"
         result = "0-1" if color == "w" else "1-0"
         message = f"{side}超时，{winner}获胜"
-        self.lan.send({"type": "timeout", "color": color})
-        self._network_system(message)
+        if self.online:
+            self.lan.send({"type": "timeout", "color": color})
+            self._network_system(message)
         self.board.finish_game(message, result)
 
     def _resign_online(self) -> None:
@@ -1734,6 +1834,8 @@ class MainWindow(QMainWindow):
         )
         self.undo_button.setEnabled(not self.online)
         self.import_button.setEnabled(not self.online)
+        self.fen_button.setEnabled(not self.online)
+        self._refresh_clock_controls()
 
     def _reset_online_game(
         self, send: bool = False, announce: bool = False
@@ -1758,6 +1860,7 @@ class MainWindow(QMainWindow):
         self.clock.start("w")
         self._update_clock_caption()
         self._update_clock_labels()
+        self._refresh_clock_controls()
         self._refresh_status()
         self._refresh_notation()
         self._refresh_nav_buttons()
@@ -1833,12 +1936,12 @@ class MainWindow(QMainWindow):
         self._undo_request_target = None
         self._unread_chat = 0
         self._update_chat_button()
-        self.clock.stop()
-        self._update_clock_labels()
+        self._reset_local_clock()
         self.board.locked_color = None
         self.board.input_locked = False
         self.undo_button.setEnabled(True)
         self.import_button.setEnabled(True)
+        self.fen_button.setEnabled(True)
         self.reset_button.setEnabled(True)
         self.setWindowTitle("国际象棋")
         self._apply_mode_controls()
@@ -2241,6 +2344,7 @@ class MainWindow(QMainWindow):
         self.ai_used_colors.clear()
         self._reset_analysis_state()
         self.board.new_game()
+        self._reset_local_clock()
         self._refresh_locks()
         self._apply_mode_controls()
         self._update_ai_status()
@@ -2395,29 +2499,44 @@ class MainWindow(QMainWindow):
                 self.ai_status.setText(
                     "Stockfish：已暂停，可手动走棋或点“重试”"
                 )
-        if self.online:
-            if self.board.game_over:
+        if self._clock_is_enabled():
+            if self.board.game_over or self.board.is_reviewing():
                 self.clock.stop()
             else:
                 QTimer.singleShot(0, self._sync_clock_turn)
+        else:
+            self.clock.stop()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+        self._schedule_session_save()
         self._refresh_online_actions()
 
     def _sync_clock_turn(self) -> None:
-        if not self.online:
+        if not self._clock_is_enabled():
             self._clock_pending_move = False
-            return
-        if self.board.game_over:
             self.clock.stop()
-            self._clock_pending_move = False
             return
+        if self.board.game_over or self.board.is_reviewing():
+            self._clock_pending_move = False
+            self.clock.stop()
+            return
+        game = self.board.game
         if self._clock_pending_move and self.clock.is_running():
             self._clock_pending_move = False
-            self.clock.complete_move(self.board.game.turn)
+            self.clock.complete_move(game.turn)
+            return
+        self._clock_pending_move = False
+        if self.online:
+            self.clock.set_turn(game.turn)
+        elif not game.history:
+            self.clock.stop()
+        elif not self.clock.is_running():
+            self.clock.start(game.turn)
         else:
-            self._clock_pending_move = False
-            self.clock.set_turn(self.board.game.turn)
+            self.clock.set_turn(game.turn)
 
     def _on_new_move(self) -> None:
+        self._clock_pending_move = True
         ply = len(self.board.game.history)
         for mapping in (
             self._eval_scores,
@@ -2657,6 +2776,7 @@ class MainWindow(QMainWindow):
         self.mode_combo.setEnabled(not self.online)
         self.side_combo.setEnabled(human_mode)
         self.difficulty_combo.setEnabled(human_mode or engine_mode)
+        self._refresh_clock_controls()
         self._refresh_status()
 
     def _refresh_locks(self) -> None:
@@ -2888,6 +3008,233 @@ class MainWindow(QMainWindow):
             and not self.board.game_over
         )
 
+    def _schedule_session_save(self) -> None:
+        if self._loading_settings or self._session_restoring:
+            return
+        self._session_save_timer.start()
+
+    def _save_session(self) -> None:
+        if self._loading_settings or self._session_restoring:
+            return
+        game = self.board.game
+        if (
+            not game.history
+            and not self.board._redo_moves
+            and not self.board.result_override
+            and game.start_fen == ChessGame.START_FEN
+        ):
+            clear_state()
+            return
+
+        moves = [ChessGame.move_to_uci(move) for _, move in game.history]
+        moves.extend(
+            ChessGame.move_to_uci(move)
+            for move in reversed(self.board._redo_moves)
+        )
+        state = {
+            "start_fen": game.start_fen,
+            "moves": moves,
+            "ply": len(game.history),
+            "match_mode": "two" if self.online else self.match_mode,
+            "human_color": self.human_color,
+            "difficulty": self.difficulty,
+            "flipped": bool(self.board.flipped),
+            "result_override": self.board.result_override or "",
+            "finish_message": self.board._finish_message or "",
+            "clock_enabled": self._clock_is_enabled(),
+            "clock_base": self.clock.base_seconds,
+            "clock_increment": self.clock.increment,
+            "clock_white": self.clock.remaining_seconds("w"),
+            "clock_black": self.clock.remaining_seconds("b"),
+        }
+        save_state(state)
+
+    def _restore_session(self) -> bool:
+        data = load_state()
+        if not data:
+            return False
+
+        moves = data.get("moves", [])
+        if (
+            not isinstance(moves, list)
+            or len(moves) > 10000
+            or any(not isinstance(item, str) for item in moves)
+        ):
+            clear_state()
+            return False
+
+        start_fen = data.get("start_fen")
+        if not isinstance(start_fen, str) or not start_fen.strip():
+            start_fen = ChessGame.START_FEN
+
+        game = ChessGame()
+        try:
+            if start_fen != ChessGame.START_FEN:
+                game.load_fen(start_fen)
+            for uci in moves:
+                move = game.find_move_by_uci(uci)
+                if move is None:
+                    raise ValueError(f"无法恢复着法：{uci}")
+                game.make_move(move)
+        except (ValueError, IndexError):
+            clear_state()
+            self.statusBar().showMessage(
+                "上次对局无法恢复，已开始新对局", 6000
+            )
+            return False
+
+        mode = data.get("match_mode")
+        if mode not in ("two", "human", "engine"):
+            mode = "two"
+        if mode in ("human", "engine") and self.engine_path is None:
+            mode = "two"
+
+        human_color = data.get("human_color")
+        if human_color not in ("w", "b"):
+            human_color = self.human_color
+        difficulty = data.get("difficulty")
+        if difficulty not in AI_LEVELS:
+            difficulty = self.difficulty
+
+        self.match_mode = mode
+        self.ai_enabled = mode in ("human", "engine")
+        self.human_color = human_color
+        self.ai_color = "w" if human_color == "b" else "b"
+        self.difficulty = difficulty
+        if mode == "human":
+            self.ai_used_colors = {self.ai_color}
+        elif mode == "engine":
+            self.ai_used_colors = {"w", "b"}
+        else:
+            self.ai_used_colors = set()
+
+        for combo, value in (
+            (self.mode_combo, mode),
+            (self.side_combo, human_color),
+            (self.difficulty_combo, difficulty),
+        ):
+            combo.blockSignals(True)
+            index = combo.findData(value)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+        flipped = data.get("flipped")
+        if isinstance(flipped, bool):
+            self.board.flipped = flipped
+        elif mode == "human":
+            self.board.flipped = human_color == "b"
+        self.eval_bar.set_flipped(self.board.flipped)
+
+        self._session_restoring = True
+        try:
+            self.board.set_game(game)
+            ply = data.get("ply")
+            if isinstance(ply, int) and not isinstance(ply, bool):
+                self.board.set_ply(max(0, min(ply, len(game.history))))
+            override = data.get("result_override")
+            if isinstance(override, str) and override:
+                self.board.result_override = override
+                self.board._finish_message = str(
+                    data.get("finish_message") or ""
+                )
+                self.board.game_over = True
+        finally:
+            self._session_restoring = False
+
+        clock_enabled = bool(data.get("clock_enabled"))
+        self.clock_checkbox.blockSignals(True)
+        self.clock_checkbox.setChecked(clock_enabled)
+        self.clock_checkbox.blockSignals(False)
+
+        try:
+            base = max(
+                1,
+                int(
+                    data.get(
+                        "clock_base",
+                        self.clock_minutes_spin.value() * 60,
+                    )
+                ),
+            )
+            increment = max(0, int(data.get("clock_increment", 0)))
+        except (TypeError, ValueError):
+            base = self.clock_minutes_spin.value() * 60
+            increment = self.clock_increment_spin.value()
+
+        for spin, value in (
+            (self.clock_minutes_spin, max(1, min(180, base // 60))),
+            (self.clock_increment_spin, max(0, min(60, increment))),
+        ):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+
+        self.clock.reset(base, increment)
+        try:
+            remaining_white = float(data.get("clock_white", base))
+            remaining_black = float(data.get("clock_black", base))
+        except (TypeError, ValueError):
+            remaining_white = remaining_black = float(base)
+        self.clock.remaining = {
+            "w": max(0.0, remaining_white),
+            "b": max(0.0, remaining_black),
+        }
+        if (
+            clock_enabled
+            and game.history
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            self.clock.start(game.turn)
+
+        self._update_clock_caption()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+        self._on_state_changed()
+        self.statusBar().showMessage("已恢复上次对局", 5000)
+        if (
+            self.ai_enabled
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            QTimer.singleShot(0, self._maybe_request_ai)
+        return True
+
+    def _show_fen_dialog(self) -> None:
+        if self.online:
+            QMessageBox.information(
+                self, "联机中", "联机对局中不能通过 FEN 更换局面。"
+            )
+            return
+        dialog = FenDialog(self.board.game.to_fen(), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        game = ChessGame()
+        try:
+            game.load_fen(dialog.fen)
+        except ValueError as exc:
+            QMessageBox.warning(self, "FEN 无效", str(exc))
+            return
+
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = False
+        self.ai_used_colors.clear()
+        self._reset_analysis_state()
+        self.board.set_game(game)
+        self._reset_local_clock()
+        self._refresh_locks()
+        self._apply_mode_controls()
+        self._update_ai_status()
+        self._refresh_status()
+        self._refresh_notation()
+        self._refresh_nav_buttons()
+        self._refresh_captured()
+        self._show_cached_eval(0)
+        self._maybe_request_ai()
+
     def _load_settings(self) -> None:
         settings = self._settings
 
@@ -2905,6 +3252,18 @@ class MainWindow(QMainWindow):
         sound = bool(int(settings.value("sound", 1)))
         self.sound_checkbox.setChecked(sound)
         self.sound_player.set_enabled(sound)
+
+        clock_enabled = bool(int(settings.value("clock_enabled", 0)))
+        self.clock_checkbox.setChecked(clock_enabled)
+        self.clock_minutes_spin.setValue(
+            max(1, min(180, int(settings.value("clock_minutes", 10))))
+        )
+        self.clock_increment_spin.setValue(
+            max(0, min(60, int(settings.value("clock_increment", 0))))
+        )
+        self._refresh_clock_controls()
+        self._update_clock_caption()
+        self._update_clock_labels()
 
         difficulty = str(settings.value("difficulty", "普通"))
         index = self.difficulty_combo.findData(difficulty)
@@ -2933,6 +3292,11 @@ class MainWindow(QMainWindow):
             "show_coordinates", int(self.board.show_coordinates)
         )
         settings.setValue("sound", int(self.sound_player.enabled))
+        settings.setValue(
+            "clock_enabled", int(self.clock_checkbox.isChecked())
+        )
+        settings.setValue("clock_minutes", self.clock_minutes_spin.value())
+        settings.setValue("clock_increment", self.clock_increment_spin.value())
         settings.setValue("difficulty", self.difficulty)
         settings.setValue("human_color", self.human_color)
         settings.setValue("flipped", int(self.board.flipped))
@@ -3045,6 +3409,8 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
+        self._session_save_timer.stop()
+        self._save_session()
         self._save_settings()
         if self._network_dialog is not None:
             self._network_dialog.hide()

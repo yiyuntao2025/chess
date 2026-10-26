@@ -31,29 +31,87 @@ class ChessGame:
         self.reset()
 
     def reset(self) -> None:
+        self.start_fen = self.START_FEN
         self._load_fen(self.START_FEN)
         self.history: list[tuple[dict, Move]] = []
         self.san_history: list[str] = []
 
+    def load_fen(self, fen: str) -> None:
+        self._load_fen(fen)
+        self.start_fen = self.to_fen()
+        self.history = []
+        self.san_history = []
+
     def _load_fen(self, fen: str) -> None:
-        placement, turn, castling, ep_square, halfmove, fullmove = fen.split()
-        self.board: list[list[Optional[str]]] = [[None] * BOARD_SIZE for _ in range(BOARD_SIZE)]
-        for row, rank in enumerate(placement.split("/")):
+        parts = fen.split()
+        if len(parts) != 6:
+            raise ValueError("FEN 必须包含 6 个字段")
+        placement, turn, castling, ep_square, halfmove, fullmove = parts
+        if turn not in ("w", "b"):
+            raise ValueError("FEN 走棋方无效")
+
+        if castling != "-":
+            if (
+                len(set(castling)) != len(castling)
+                or any(char not in "KQkq" for char in castling)
+            ):
+                raise ValueError("FEN 王车易位字段无效")
+
+        ranks = placement.split("/")
+        if len(ranks) != BOARD_SIZE:
+            raise ValueError("FEN 棋盘必须有 8 行")
+
+        board: list[list[Optional[str]]] = [
+            [None] * BOARD_SIZE for _ in range(BOARD_SIZE)
+        ]
+        for row, rank in enumerate(ranks):
             col = 0
             for char in rank:
                 if char.isdigit():
                     col += int(char)
-                else:
-                    self.board[row][col] = char
+                elif char in "pnbrqkPNBRQK":
+                    if col >= BOARD_SIZE:
+                        raise ValueError("FEN 某一行超过 8 格")
+                    board[row][col] = char
                     col += 1
+                else:
+                    raise ValueError(f"FEN 中包含无效字符：{char}")
+            if col != BOARD_SIZE:
+                raise ValueError("FEN 某一行不是 8 格")
+
+        if ep_square == "-":
+            ep_target = None
+        else:
+            if (
+                len(ep_square) != 2
+                or ep_square[0] not in "abcdefgh"
+                or ep_square[1] not in "12345678"
+            ):
+                raise ValueError("FEN 吃过路兵目标格无效")
+            ep_target = (8 - int(ep_square[1]), ord(ep_square[0]) - ord("a"))
+
+        try:
+            halfmove_clock = int(halfmove)
+            fullmove_number = int(fullmove)
+        except ValueError as exc:
+            raise ValueError("FEN 回合数字无效") from exc
+        if halfmove_clock < 0 or fullmove_number < 1:
+            raise ValueError("FEN 回合数字超出范围")
+
+        self.board = board
         self.turn = turn
         self.castling = "" if castling == "-" else castling
-        if ep_square == "-":
-            self.ep_target = None
-        else:
-            self.ep_target = (8 - int(ep_square[1]), ord(ep_square[0]) - ord("a"))
-        self.halfmove_clock = int(halfmove)
-        self.fullmove_number = int(fullmove)
+        self.ep_target = ep_target
+        self.halfmove_clock = halfmove_clock
+        self.fullmove_number = fullmove_number
+
+        if self.find_king("w") is None or self.find_king("b") is None:
+            raise ValueError("FEN 必须包含双方国王")
+        if self.in_check("w") and self.in_check("b"):
+            raise ValueError("双方国王不能同时被将军")
+        if self.in_check(self.opponent(turn)):
+            raise ValueError("非走棋方不能处于被将军状态")
+
         self.position_counts: dict[tuple, int] = {self._position_key(): 1}
 
     @staticmethod
