@@ -51,10 +51,11 @@ from chess_clock import ChessClock
 from chess_engine import ChessGame, Move
 from coach_ui import CoachDialog
 from fen_dialog import FenDialog
+from game_tree import GameNode, GameTree
 from lan import LanManager
 from lan_ui import NetworkDialog
-from pgn_export import build_pgn
-from pgn_import import PGNImportError, extract_moves
+from pgn_export import build_pgn_tree
+from pgn_import import PGNImportError, parse_pgn
 from session_store import clear_state, load_state, save_state
 from sound_player import SoundPlayer
 from stockfish_ai import (
@@ -354,11 +355,13 @@ class ChessBoard(QWidget):
         self._pending_result: Optional[str] = None
         self.result_override: Optional[str] = None
         self._finish_message: Optional[str] = None
+        self.reviewing = False
 
     def new_game(self) -> None:
         self._cancel_animation()
         self.game.reset()
         self._redo_moves.clear()
+        self.reviewing = False
         self.hint_move = None
         self.selected = None
         self.legal_moves = []
@@ -369,10 +372,11 @@ class ChessBoard(QWidget):
         self.update()
         self.stateChanged.emit()
 
-    def set_game(self, game: ChessGame) -> None:
+    def set_game(self, game: ChessGame, reviewing: bool = False) -> None:
         self._cancel_animation()
         self.game = game
         self._redo_moves.clear()
+        self.reviewing = reviewing
         self.hint_move = None
         self.selected = None
         self.legal_moves = []
@@ -460,7 +464,7 @@ class ChessBoard(QWidget):
         return changed
 
     def is_reviewing(self) -> bool:
-        return bool(self._redo_moves)
+        return self.reviewing or bool(self._redo_moves)
 
     def total_plies(self) -> int:
         return len(self.game.history) + len(self._redo_moves)
@@ -1130,6 +1134,7 @@ class MainWindow(QMainWindow):
         self.human_color = "w"
         self.ai_color = "b"
         self.difficulty = "普通"
+        self.game_tree = GameTree()
         self.online = False
         self.is_online_host = False
         self.net_game_id = 0
@@ -1277,12 +1282,10 @@ class MainWindow(QMainWindow):
         ):
             button.setObjectName("SmallButton")
             nav_row.addWidget(button)
-        self.first_button.clicked.connect(lambda: self._jump_to_ply(0))
+        self.first_button.clicked.connect(self._go_first)
         self.prev_button.clicked.connect(self._go_previous)
         self.next_button.clicked.connect(self._go_next)
-        self.latest_button.clicked.connect(
-            lambda: self._jump_to_ply(self.board.total_plies())
-        )
+        self.latest_button.clicked.connect(self._go_latest)
         side_layout.addLayout(nav_row)
 
         game_action_row = QHBoxLayout()
@@ -1845,6 +1848,7 @@ class MainWindow(QMainWindow):
         self._ai_paused = False
         self.ai_used_colors.clear()
         self._reset_analysis_state()
+        self.game_tree = GameTree()
         self.board.flipped = self.local_color == "b"
         self.eval_bar.set_flipped(self.board.flipped)
         self.board.new_game()
@@ -2128,9 +2132,12 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if answer == QMessageBox.StandardButton.Yes:
+                node = self._node_at_ply(target)
+                if node is None:
+                    self.lan.disconnect("同步错误：找不到悔棋目标")
+                    return
                 self.lan.send({"type": "undo_accept", "target": target})
-                self.board.rollback_to(target)
-                self.clock.set_turn(self.board.game.turn)
+                self._go_to_node(node, truncate=True)
                 self._network_system("你同意了对方悔棋")
             else:
                 self.lan.send({"type": "undo_decline"})
@@ -2153,8 +2160,11 @@ class MainWindow(QMainWindow):
             ):
                 self.lan.disconnect("同步错误：悔棋目标与请求不一致")
                 return
-            self.board.rollback_to(target)
-            self.clock.set_turn(self.board.game.turn)
+            node = self._node_at_ply(target)
+            if node is None:
+                self.lan.disconnect("同步错误：找不到悔棋目标")
+                return
+            self._go_to_node(node, truncate=True)
             self._network_system("对方同意了悔棋")
 
         elif kind == "undo_decline":
@@ -2203,21 +2213,28 @@ class MainWindow(QMainWindow):
         return white, black
 
     def _full_san_result(self) -> tuple[list[str], str]:
-        game = self.board.game
-        if not self.board.is_reviewing():
-            return game.san_history, self.board.final_result()
-
-        replay = ChessGame()
-        for _, move in game.history:
-            replay.make_move(move)
-        for move in reversed(self.board._redo_moves):
-            replay.make_move(move)
-        return replay.san_history, replay.result_tag()
+        sans = [node.san for node in self.game_tree.mainline()]
+        result = self.board.final_result() or self.game_tree.result
+        return sans, result
 
     def _pgn_text(self) -> str:
         white, black = self._pgn_names()
-        sans, result = self._full_san_result()
-        return build_pgn(sans, result, white=white, black=black)
+        if self.game_tree.headers.get("White"):
+            white = self.game_tree.headers["White"]
+        if self.game_tree.headers.get("Black"):
+            black = self.game_tree.headers["Black"]
+        result = self.board.final_result() or self.game_tree.result
+        extra_headers: dict[str, str] = {}
+        if self._clock_is_enabled():
+            base, increment = self._active_clock_config()
+            extra_headers["TimeControl"] = f"{base}+{increment}"
+        return build_pgn_tree(
+            self.game_tree,
+            result,
+            white=white,
+            black=black,
+            extra_headers=extra_headers,
+        )
 
     def _export_pgn(self) -> None:
         pgn = self._pgn_text()
@@ -2270,15 +2287,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            sans = extract_moves(text)
-            imported = ChessGame()
-            for index, san in enumerate(sans, 1):
-                move = imported.find_move_by_san(san)
-                if move is None:
-                    raise PGNImportError(
-                        f"第 {index} 着无法识别或非法：{san}"
-                    )
-                imported.make_move(move)
+            tree = parse_pgn(text)
         except (PGNImportError, ValueError) as exc:
             QMessageBox.warning(self, "导入失败", str(exc))
             return
@@ -2288,11 +2297,19 @@ class MainWindow(QMainWindow):
         self._ai_paused = bool(self.ai_enabled)
         self.ai_used_colors.clear()
         self._reset_analysis_state()
-        self.board.set_game(imported)
+        self.game_tree = tree
+        node = tree.latest_node()
+        tree.current = node
+        imported = tree.build_game(node)
+        self.board.set_game(imported, reviewing=False)
         self._refresh_locks()
         self._update_ai_status()
+        self._show_cached_eval(0)
         self.statusBar().showMessage(
-            f"已导入 {len(sans)} 手棋谱，可用棋谱或导航按钮回放", 6000
+            f"已导入棋谱（主线 {len(tree.mainline())} 手，"
+            f"{len(tree.root.children)} 个首着变例），"
+            "可点击棋谱节点回放",
+            6000,
         )
 
     def _tick_thinking(self) -> None:
@@ -2343,6 +2360,7 @@ class MainWindow(QMainWindow):
         self._ai_paused = False
         self.ai_used_colors.clear()
         self._reset_analysis_state()
+        self.game_tree = GameTree()
         self.board.new_game()
         self._reset_local_clock()
         self._refresh_locks()
@@ -2351,68 +2369,97 @@ class MainWindow(QMainWindow):
         self._refresh_status()
         self._maybe_request_ai()
 
+    def _node_at_ply(self, ply: int) -> Optional[GameNode]:
+        node = self.game_tree.current
+        while node.parent is not None and node.ply > ply:
+            node = node.parent
+        if node.ply == ply:
+            return node
+        return None
+
+    def _go_to_node(
+        self,
+        node: GameNode,
+        truncate: bool = False,
+        resume_ai: bool = False,
+    ) -> None:
+        if truncate:
+            self.game_tree.truncate_after(node)
+        self.game_tree.current = node
+        self._prepare_navigation()
+        game = self.game_tree.build_game(node)
+        self.board.set_game(game, reviewing=bool(node.children))
+        self._update_ai_status()
+        if resume_ai and not self.board.is_reviewing():
+            self._maybe_request_ai()
+
     def _undo(self) -> None:
         if self.online:
             self._request_online_undo()
             return
-        game = self.board.game
-        history_length = len(game.history)
-        if not history_length and not self.board.is_reviewing():
+        current = self.game_tree.current
+        if current.parent is None:
             return
-
-        steps = 1
+        target = current.parent
+        game = self.board.game
         if (
-            self.ai_enabled
+            not self.board.is_reviewing()
+            and self.ai_enabled
             and self.match_mode == "human"
             and not self._ai_paused
-            and not self.board.is_reviewing()
             and game.turn == self.human_color
         ):
-            if history_length < 2:
+            if target.parent is None:
                 return
-            steps = 2
-
-        self._prepare_navigation()
-        if self.board.is_reviewing():
-            self.board.undo()
-        else:
-            self.board.set_ply(max(0, history_length - steps))
-        if self.ai_enabled and self._ai_is_turn():
-            self._maybe_request_ai()
-        self._update_ai_status()
+            target = target.parent
+        self._go_to_node(target)
 
     def _go_previous(self) -> None:
         if self.online:
             return
-        if not self.board.game.history:
+        parent = self.game_tree.current.parent
+        if parent is None:
             return
-        self._prepare_navigation()
-        self.board.undo()
-        self._update_ai_status()
+        self._go_to_node(parent)
 
     def _go_next(self) -> None:
-        if self.online or not self.board.is_reviewing():
+        if self.online or not self.game_tree.current.children:
             return
-        self._prepare_navigation()
-        self.board.redo()
-        if not self.board.is_reviewing():
-            self._maybe_request_ai()
-        self._update_ai_status()
+        self._go_to_node(
+            self.game_tree.current.children[0], resume_ai=True
+        )
+
+    def _go_first(self) -> None:
+        if self.online:
+            return
+        self._go_to_node(self.game_tree.root)
+
+    def _go_latest(self) -> None:
+        if self.online:
+            return
+        self._go_to_node(self.game_tree.latest_node(), resume_ai=True)
 
     def _jump_to_ply(self, ply: int) -> None:
         if self.online:
             self.statusBar().showMessage("联机对局中暂不支持回放", 3000)
             return
-        if ply == len(self.board.game.history):
-            return
-        self._prepare_navigation()
-        self.board.set_ply(ply)
-        if not self.board.is_reviewing():
-            self._maybe_request_ai()
-        self._update_ai_status()
+        node = self.game_tree.root
+        while node.children and node.ply < ply:
+            node = node.children[0]
+        if node.ply == ply:
+            self._go_to_node(node, resume_ai=True)
 
     def _on_notation_anchor(self, url) -> None:
         text = url.toString()
+        if text.startswith("node:"):
+            try:
+                node_id = int(text[5:])
+            except ValueError:
+                return
+            node = self.game_tree.node_by_id(node_id)
+            if node is not None:
+                self._go_to_node(node, resume_ai=True)
+            return
         if not text.startswith("ply:"):
             return
         try:
@@ -2433,8 +2480,9 @@ class MainWindow(QMainWindow):
         self.hint_label.setText("提示：--")
 
     def _refresh_nav_buttons(self) -> None:
-        has_history = bool(self.board.game.history)
-        can_redo = self.board.is_reviewing()
+        node = self.game_tree.current
+        has_history = node.parent is not None
+        can_next = bool(node.children)
         if self.online:
             self.first_button.setEnabled(False)
             self.prev_button.setEnabled(False)
@@ -2443,10 +2491,12 @@ class MainWindow(QMainWindow):
         else:
             self.first_button.setEnabled(has_history)
             self.prev_button.setEnabled(has_history)
-            self.next_button.setEnabled(can_redo)
-            self.latest_button.setEnabled(can_redo)
-        self.copy_button.setEnabled(self.board.total_plies() > 0)
-        can_undo = bool(self.board.game.history) and (
+            self.next_button.setEnabled(can_next)
+            self.latest_button.setEnabled(
+                node is not self.game_tree.latest_node()
+            )
+        self.copy_button.setEnabled(bool(self.game_tree.root.children))
+        can_undo = has_history and (
             not self.online or not self.board.game_over
         )
         if (
@@ -2455,7 +2505,7 @@ class MainWindow(QMainWindow):
             and not self._ai_paused
             and not self.board.is_reviewing()
             and self.board.game.turn == self.human_color
-            and len(self.board.game.history) < 2
+            and node.ply < 2
         ):
             can_undo = False
         self.undo_button.setEnabled(can_undo)
@@ -2537,7 +2587,17 @@ class MainWindow(QMainWindow):
 
     def _on_new_move(self) -> None:
         self._clock_pending_move = True
-        ply = len(self.board.game.history)
+        game = self.board.game
+        move = game.last_move
+        if move is not None:
+            piece = game.piece_at(move.to_row, move.to_col)
+            color = ChessGame.color_of(piece) if piece else game.turn
+            san = game.san_history[-1] if game.san_history else ""
+            self.game_tree.add_move(
+                move, san, color, make_mainline=True
+            )
+            self.board.reviewing = False
+        ply = len(game.history)
         for mapping in (
             self._eval_scores,
             self._eval_display,
@@ -2565,9 +2625,13 @@ class MainWindow(QMainWindow):
             else:
                 self.statusBar().showMessage("联机：等待对方走棋")
         elif self.board.is_reviewing():
+            total = len(
+                self.game_tree.path_to(
+                    self.game_tree.tip_from(self.game_tree.current)
+                )
+            )
             self.statusBar().showMessage(
-                f"复盘：第 {len(self.board.game.history)} / "
-                f"{self.board.total_plies()} 手"
+                f"复盘：第 {self.game_tree.current.ply} / {total} 手"
             )
         elif self.board.game.in_check(self.board.game.turn):
             self.statusBar().showMessage("将军！请先解除被将军的状态")
@@ -2589,68 +2653,75 @@ class MainWindow(QMainWindow):
         self._refresh_online_actions()
 
     def _refresh_notation(self) -> None:
-        sans, result = self._full_san_result()
-        current_ply = len(self.board.game.history)
+        tree = self.game_tree
+        current = tree.current
+        path_ids = {node.node_id for node in tree.path_to(current)}
         parts = [
-            '<pre style="margin:0; font-family:Consolas,\'Courier New\',monospace; '
-            'font-size:12px; color:#e8ddc7;">'
+            '<div style="margin:0; font-family:Consolas,\'Courier New\',monospace; '
+            'font-size:12px; color:#e8ddc7; white-space: pre-wrap;">'
         ]
-
-        if not sans:
-            parts.append(
-                '<span style="color:#8d877d;">尚无着法\n</span>'
-            )
-
-        for index in range(0, len(sans), 2):
-            number = index // 2 + 1
-            white_ply = index + 1
-            white_link = self._notation_link(
-                white_ply,
-                sans[index],
-                white_ply == current_ply,
-                white_ply > current_ply,
-            )
-            line = f"{number:>3}. {white_link}"
-            if index + 1 < len(sans):
-                black_ply = index + 2
-                black_link = self._notation_link(
-                    black_ply,
-                    sans[index + 1],
-                    black_ply == current_ply,
-                    black_ply > current_ply,
+        tokens = self._notation_children(root=True, force_first=True)
+        if not tokens:
+            parts.append('<span style="color:#8d877d;">尚无着法</span>')
+        else:
+            parts.append(" ".join(tokens))
+            result = self.board.final_result() or tree.result
+            if result:
+                parts.append(
+                    f'\n<span style="color:#d8b26a;">结果：{result}</span>'
                 )
-                annotation_length = len(
-                    self._move_annotations.get(white_ply, "")
-                )
-                padding = " " * max(
-                    1, 2 + 8 - len(sans[index]) - annotation_length
-                )
-                line += padding + black_link
-            parts.append(line + "\n")
-
-        if result:
-            parts.append(
-                f'\n<span style="color:#d8b26a;">结果：{result}</span>\n'
-            )
-        parts.append("</pre>")
+        parts.append("</div>")
         self.notation.setHtml("".join(parts))
-        if current_ply > 0:
-            self.notation.scrollToAnchor(f"ply-{current_ply}")
+        if current.node_id != tree.root.node_id:
+            self.notation.scrollToAnchor(f"node-{current.node_id}")
         else:
             self.notation.verticalScrollBar().setValue(0)
 
-    def _notation_link(
-        self, ply: int, san: str, current: bool, future: bool = False
+    def _notation_children(
+        self,
+        parent: Optional[GameNode] = None,
+        root: bool = False,
+        force_first: bool = False,
+    ) -> list[str]:
+        node = self.game_tree.root if root or parent is None else parent
+        if not node.children:
+            return []
+        current = self.game_tree.current
+        path_ids = {
+            item.node_id for item in self.game_tree.path_to(current)
+        }
+        tokens: list[str] = [
+            self._notation_node(node.children[0], force_first, path_ids)
+        ]
+        for variation in node.children[1:]:
+            tokens.append("(")
+            tokens.append(
+                self._notation_node(variation, True, path_ids)
+            )
+            tokens.extend(self._notation_children(variation))
+            tokens.append(")")
+        tokens.extend(self._notation_children(node.children[0]))
+        return tokens
+
+    def _notation_node(
+        self, node: GameNode, force_number: bool, path_ids: set[int]
     ) -> str:
+        number = self.game_tree.move_number(node)
+        if node.color == "w":
+            prefix = f"{number}. "
+        elif force_number:
+            prefix = f"{number}... "
+        else:
+            prefix = ""
         style = "color:#e8ddc7; text-decoration:none;"
-        if future:
+        if node.node_id not in path_ids:
             style = "color:#77716a; text-decoration:none;"
-        if current:
+        if node.node_id == self.game_tree.current.node_id:
             style = (
                 "color:#ffffff; text-decoration:none;"
                 " background-color:#4d5b35;"
             )
-        annotation = self._move_annotations.get(ply)
+        annotation = self._move_annotations.get(node.ply)
         suffix = ""
         if annotation:
             colors = {
@@ -2663,11 +2734,22 @@ class MainWindow(QMainWindow):
             suffix = (
                 f'<span style="color:{color};">{annotation}</span>'
             )
-        escaped = html_module.escape(san)
-        return (
-            f'<a name="ply-{ply}" href="ply:{ply}" style="{style}">'
-            f"{escaped}</a>{suffix}"
+        nag_symbols = {1: "!", 2: "?", 3: "!!", 4: "??", 5: "!?", 6: "?!"}
+        if node.nags:
+            suffix += "".join(
+                nag_symbols.get(nag, f"${nag}") for nag in node.nags
+            )
+        escaped = html_module.escape(node.san)
+        link = (
+            f'<a name="node-{node.node_id}" href="node:{node.node_id}" '
+            f'style="{style}">{escaped}</a>{suffix}'
         )
+        if node.comment:
+            link += (
+                f' <span style="color:#8d877d;">'
+                f"{{{html_module.escape(node.comment)}}}</span>"
+            )
+        return prefix + link
 
     def _refresh_captured(self) -> None:
         by_white, by_black = self.board.game.captured_pieces()
@@ -3016,28 +3098,24 @@ class MainWindow(QMainWindow):
     def _save_session(self) -> None:
         if self._loading_settings or self._session_restoring:
             return
-        game = self.board.game
+        tree = self.game_tree
         if (
-            not game.history
-            and not self.board._redo_moves
+            not tree.root.children
             and not self.board.result_override
-            and game.start_fen == ChessGame.START_FEN
+            and tree.start_fen == ChessGame.START_FEN
         ):
             clear_state()
             return
-
-        moves = [ChessGame.move_to_uci(move) for _, move in game.history]
-        moves.extend(
-            ChessGame.move_to_uci(move)
-            for move in reversed(self.board._redo_moves)
-        )
+        if not tree.current.children:
+            result = self.board.final_result()
+            if result:
+                tree.result = result
         state = {
-            "start_fen": game.start_fen,
-            "moves": moves,
-            "ply": len(game.history),
+            "tree": tree.to_dict(),
             "match_mode": "two" if self.online else self.match_mode,
             "human_color": self.human_color,
             "difficulty": self.difficulty,
+            "ai_paused": self._ai_paused,
             "flipped": bool(self.board.flipped),
             "result_override": self.board.result_override or "",
             "finish_message": self.board._finish_message or "",
@@ -3054,34 +3132,45 @@ class MainWindow(QMainWindow):
         if not data:
             return False
 
-        moves = data.get("moves", [])
-        if (
-            not isinstance(moves, list)
-            or len(moves) > 10000
-            or any(not isinstance(item, str) for item in moves)
-        ):
-            clear_state()
-            return False
-
-        start_fen = data.get("start_fen")
-        if not isinstance(start_fen, str) or not start_fen.strip():
-            start_fen = ChessGame.START_FEN
-
-        game = ChessGame()
         try:
-            if start_fen != ChessGame.START_FEN:
-                game.load_fen(start_fen)
-            for uci in moves:
-                move = game.find_move_by_uci(uci)
-                if move is None:
-                    raise ValueError(f"无法恢复着法：{uci}")
-                game.make_move(move)
-        except (ValueError, IndexError):
+            tree_data = data.get("tree")
+            if isinstance(tree_data, dict):
+                tree = GameTree.from_dict(tree_data)
+            else:
+                start_fen = data.get("start_fen")
+                if not isinstance(start_fen, str) or not start_fen.strip():
+                    start_fen = ChessGame.START_FEN
+                moves = data.get("moves", [])
+                if (
+                    not isinstance(moves, list)
+                    or len(moves) > 10000
+                    or any(not isinstance(item, str) for item in moves)
+                ):
+                    raise ValueError("保存的着法无效")
+                tree = GameTree(start_fen)
+                node = tree.root
+                for uci in moves:
+                    game = tree.build_game(node)
+                    move = game.find_move_by_uci(uci)
+                    if move is None:
+                        raise ValueError(f"无法恢复着法：{uci}")
+                    node = tree.append_move(
+                        node, move, game.san_for_move(move), game.turn
+                    )
+                ply = data.get("ply")
+                if isinstance(ply, int) and not isinstance(ply, bool):
+                    path = [tree.root, *tree.path_to(node)]
+                    if 0 <= ply < len(path):
+                        node = path[ply]
+                tree.current = node
+        except (ValueError, IndexError, TypeError):
             clear_state()
             self.statusBar().showMessage(
                 "上次对局无法恢复，已开始新对局", 6000
             )
             return False
+
+        game = tree.build_game(tree.current)
 
         mode = data.get("match_mode")
         if mode not in ("two", "human", "engine"):
@@ -3126,14 +3215,19 @@ class MainWindow(QMainWindow):
             self.board.flipped = human_color == "b"
         self.eval_bar.set_flipped(self.board.flipped)
 
+        self.game_tree = tree
+        self._ai_paused = bool(data.get("ai_paused")) and self.ai_enabled
         self._session_restoring = True
         try:
-            self.board.set_game(game)
-            ply = data.get("ply")
-            if isinstance(ply, int) and not isinstance(ply, bool):
-                self.board.set_ply(max(0, min(ply, len(game.history))))
+            self.board.set_game(
+                game, reviewing=self.game_tree.is_reviewing()
+            )
             override = data.get("result_override")
-            if isinstance(override, str) and override:
+            if (
+                isinstance(override, str)
+                and override
+                and not self.game_tree.current.children
+            ):
                 self.board.result_override = override
                 self.board._finish_message = str(
                     data.get("finish_message") or ""
@@ -3195,6 +3289,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("已恢复上次对局", 5000)
         if (
             self.ai_enabled
+            and not self._ai_paused
             and not self.board.game_over
             and not self.board.is_reviewing()
         ):
@@ -3211,9 +3306,8 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        game = ChessGame()
         try:
-            game.load_fen(dialog.fen)
+            tree = GameTree(dialog.fen)
         except ValueError as exc:
             QMessageBox.warning(self, "FEN 无效", str(exc))
             return
@@ -3223,7 +3317,8 @@ class MainWindow(QMainWindow):
         self._ai_paused = False
         self.ai_used_colors.clear()
         self._reset_analysis_state()
-        self.board.set_game(game)
+        self.game_tree = tree
+        self.board.set_game(tree.build_game(tree.root), reviewing=False)
         self._reset_local_clock()
         self._refresh_locks()
         self._apply_mode_controls()
@@ -3397,9 +3492,13 @@ class MainWindow(QMainWindow):
 
     def _on_game_ended(self, message: str) -> None:
         self._set_ai_thinking(False)
+        result = self.board.final_result()
+        if result:
+            self.game_tree.result = result
         if self.online:
             self.clock.stop()
         self._refresh_status()
+        self._refresh_notation()
         if self.online:
             self.ai_status.setText("联机：对局结束")
         elif self.ai_enabled:
