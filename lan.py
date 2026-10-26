@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import socket
 import struct
 import threading
+import time
 from typing import Callable, Optional
 from urllib.parse import urlsplit
 
@@ -17,6 +19,9 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DEFAULT_PORT = 8765
 DISCOVERY_PORT = 45876
 MAX_MESSAGE_BYTES = 1_000_000
+PROTOCOL_VERSION = 2
+RATE_LIMIT_MESSAGES = 160
+RATE_LIMIT_WINDOW = 1.0
 
 
 class LanError(Exception):
@@ -117,7 +122,27 @@ def _read_http_headers(
     return lines[0], headers
 
 
-def _server_handshake(sock: socket.socket, buffer: bytearray) -> None:
+def _send_http_error(
+    sock: socket.socket, status: str, message: str
+) -> None:
+    body = message.encode("utf-8")
+    response = (
+        f"HTTP/1.1 {status}\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("ascii") + body
+    try:
+        sock.sendall(response)
+    except OSError:
+        pass
+
+
+def _server_handshake(
+    sock: socket.socket,
+    buffer: bytearray,
+    auth_token: str = "",
+) -> None:
     request_line, headers = _read_http_headers(sock, buffer)
     upgrade = headers.get("upgrade", "").lower()
     connection = headers.get("connection", "").lower()
@@ -140,6 +165,23 @@ def _server_handshake(sock: socket.socket, buffer: bytearray) -> None:
             pass
         raise LanError("对方没有发起 WebSocket 升级")
 
+    version = headers.get("x-chess-version", "")
+    if version != str(PROTOCOL_VERSION):
+        _send_http_error(
+            sock,
+            "426 Upgrade Required",
+            f"Protocol version {PROTOCOL_VERSION} required",
+        )
+        raise LanError(
+            f"协议版本不兼容（需要 {PROTOCOL_VERSION}，收到 {version or '无'}）"
+        )
+
+    if auth_token:
+        supplied = headers.get("x-chess-token", "")
+        if not hmac.compare_digest(supplied, auth_token):
+            _send_http_error(sock, "401 Unauthorized", "Invalid room password")
+            raise LanError("房间密码错误")
+
     accept = base64.b64encode(
         hashlib.sha1((key + WS_GUID).encode("ascii")).digest()
     ).decode("ascii")
@@ -154,13 +196,20 @@ def _server_handshake(sock: socket.socket, buffer: bytearray) -> None:
 
 
 def _client_handshake(
-    sock: socket.socket, host: str, port: int, buffer: bytearray
+    sock: socket.socket,
+    host: str,
+    port: int,
+    buffer: bytearray,
+    auth_token: str = "",
 ) -> None:
     key = base64.b64encode(os.urandom(16)).decode("ascii")
     host_header = f"{host}:{port}"
     if ":" in host and not host.startswith("["):
         host_header = f"[{host}]:{port}"
 
+    auth_header = (
+        f"X-Chess-Token: {auth_token}\r\n" if auth_token else ""
+    )
     request = (
         "GET / HTTP/1.1\r\n"
         f"Host: {host_header}\r\n"
@@ -168,6 +217,8 @@ def _client_handshake(
         "Connection: Upgrade\r\n"
         f"Sec-WebSocket-Key: {key}\r\n"
         "Sec-WebSocket-Version: 13\r\n"
+        f"X-Chess-Version: {PROTOCOL_VERSION}\r\n"
+        f"{auth_header}"
         "\r\n"
     )
     sock.sendall(request.encode("ascii"))
@@ -306,6 +357,8 @@ class WebSocketConnection:
                     if fragment_opcode is None:
                         raise LanError("收到无效的 WebSocket 分片")
                     fragments.extend(payload)
+                    if len(fragments) > MAX_MESSAGE_BYTES:
+                        raise LanError("收到的分片消息过大")
                 else:
                     continue
 
@@ -372,6 +425,10 @@ class LanManager(QObject):
         self._conn: Optional[WebSocketConnection] = None
         self._stop = threading.Event()
         self._discovery_stop: Optional[threading.Event] = None
+        self._send_seq = 0
+        self._recv_seq = 0
+        self._rate_start = time.monotonic()
+        self._rate_count = 0
 
     def _stop_discovery(self) -> None:
         with self._lock:
@@ -388,6 +445,10 @@ class LanManager(QObject):
             conn = self._conn
             self._listener = None
             self._conn = None
+            self._send_seq = 0
+            self._recv_seq = 0
+            self._rate_start = time.monotonic()
+            self._rate_count = 0
             self._token += 1
             token = self._token
             stop = threading.Event()
@@ -402,8 +463,13 @@ class LanManager(QObject):
             conn.close()
         return token, stop
 
-    def host(self, port: int) -> bool:
+    def host(self, port: int, password: str = "") -> bool:
         token, stop = self._prepare_session()
+        auth_token = (
+            hashlib.sha256(password.encode("utf-8")).hexdigest()
+            if password
+            else ""
+        )
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -441,7 +507,7 @@ class LanManager(QObject):
 
         threading.Thread(
             target=self._accept_loop,
-            args=(listener, stop, token),
+            args=(listener, stop, token, auth_token),
             daemon=True,
         ).start()
         return True
@@ -482,6 +548,7 @@ class LanManager(QObject):
         listener: socket.socket,
         stop: threading.Event,
         token: int,
+        auth_token: str,
     ) -> None:
         try:
             while not stop.is_set():
@@ -500,7 +567,7 @@ class LanManager(QObject):
                     client.settimeout(10.0)
                     _configure_socket(client)
                     buffer = bytearray()
-                    _server_handshake(client, buffer)
+                    _server_handshake(client, buffer, auth_token)
                     client.settimeout(None)
                 except (OSError, LanError) as exc:
                     try:
@@ -542,7 +609,7 @@ class LanManager(QObject):
             except OSError:
                 pass
 
-    def connect(self, address: str) -> bool:
+    def connect(self, address: str, password: str = "") -> bool:
         try:
             host, port = parse_address(address)
         except LanError as exc:
@@ -550,9 +617,14 @@ class LanManager(QObject):
             return False
 
         token, stop = self._prepare_session()
+        auth_token = (
+            hashlib.sha256(password.encode("utf-8")).hexdigest()
+            if password
+            else ""
+        )
         threading.Thread(
             target=self._connect_loop,
-            args=(host, port, token, stop),
+            args=(host, port, token, stop, auth_token),
             daemon=True,
         ).start()
         return True
@@ -563,6 +635,7 @@ class LanManager(QObject):
         port: int,
         token: int,
         stop: threading.Event,
+        auth_token: str,
     ) -> None:
         sock: Optional[socket.socket] = None
         try:
@@ -570,7 +643,7 @@ class LanManager(QObject):
             _configure_socket(sock)
             sock.settimeout(10.0)
             buffer = bytearray()
-            _client_handshake(sock, host, port, buffer)
+            _client_handshake(sock, host, port, buffer, auth_token)
             sock.settimeout(None)
             if stop.is_set() or token != self._token:
                 sock.close()
@@ -603,12 +676,32 @@ class LanManager(QObject):
     def _handle_text(self, token: int, text: str) -> None:
         if token != self._token:
             return
+        now = time.monotonic()
+        with self._lock:
+            if now - self._rate_start > RATE_LIMIT_WINDOW:
+                self._rate_start = now
+                self._rate_count = 0
+            self._rate_count += 1
+            if self._rate_count > RATE_LIMIT_MESSAGES:
+                self.errorOccurred.emit("联机消息过于频繁，已忽略")
+                return
         try:
             data = json.loads(text)
         except (json.JSONDecodeError, TypeError):
             return
-        if isinstance(data, dict):
-            self.messageReceived.emit(data)
+        if not isinstance(data, dict):
+            return
+        if data.get("v") != PROTOCOL_VERSION:
+            self.errorOccurred.emit("联机协议版本不兼容")
+            return
+        seq = data.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool):
+            return
+        with self._lock:
+            if seq <= self._recv_seq:
+                return
+            self._recv_seq = seq
+        self.messageReceived.emit(data)
 
     def _handle_close(self, token: int, reason: str) -> None:
         self._stop_discovery()
@@ -630,10 +723,14 @@ class LanManager(QObject):
     def send(self, data: dict) -> bool:
         with self._lock:
             connection = self._conn
-        if connection is None:
-            return False
+            if connection is None:
+                return False
+            self._send_seq += 1
+            payload = dict(data)
+            payload["v"] = PROTOCOL_VERSION
+            payload["seq"] = self._send_seq
         try:
-            connection.send_json(data)
+            connection.send_json(payload)
             return True
         except LanError as exc:
             self.errorOccurred.emit(str(exc))

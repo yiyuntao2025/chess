@@ -56,7 +56,8 @@ class NetworkDialog(QDialog):
             "房主执白，加入方执黑。连接后自动升级为 WebSocket 协议；"
             "关闭本窗口不会断开连接。\n"
             "请确保双方在同一局域网，并允许防火墙放行所选端口"
-            "（自动发现还需 UDP 45876）。"
+            "（自动发现还需 UDP 45876）。\n"
+            "房间密码只用于握手校验，当前连接未启用 TLS 加密。"
         )
         hint.setObjectName("HintLabel")
         hint.setWordWrap(True)
@@ -108,6 +109,13 @@ class NetworkDialog(QDialog):
         time_hint.setObjectName("HintLabel")
         host_layout.addWidget(time_hint)
 
+        self.host_password_edit = QLineEdit()
+        self.host_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.host_password_edit.setPlaceholderText(
+            "可选房间密码（留空则不设密码）"
+        )
+        host_layout.addWidget(self.host_password_edit)
+
         address_row = QHBoxLayout()
         self.address_display = QLineEdit()
         self.address_display.setReadOnly(True)
@@ -141,6 +149,13 @@ class NetworkDialog(QDialog):
         self.connect_button.clicked.connect(self._start_connect)
         address_row.addWidget(self.connect_button)
         connect_layout.addLayout(address_row)
+
+        self.join_password_edit = QLineEdit()
+        self.join_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.join_password_edit.setPlaceholderText(
+            "房间密码（如果房主设置了密码）"
+        )
+        connect_layout.addWidget(self.join_password_edit)
 
         discovery_row = QHBoxLayout()
         self.search_button = QPushButton("搜索局域网房间")
@@ -264,6 +279,8 @@ class NetworkDialog(QDialog):
         self.room_combo.setEnabled(bool(self._rooms))
         self.minutes_spin.setEnabled(True)
         self.increment_spin.setEnabled(True)
+        self.host_password_edit.setEnabled(True)
+        self.join_password_edit.setEnabled(True)
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
         self._set_quick_enabled(False)
@@ -283,6 +300,8 @@ class NetworkDialog(QDialog):
         self.room_combo.setEnabled(False)
         self.minutes_spin.setEnabled(False)
         self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
@@ -302,6 +321,8 @@ class NetworkDialog(QDialog):
         self.room_combo.setEnabled(False)
         self.minutes_spin.setEnabled(False)
         self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
@@ -321,6 +342,8 @@ class NetworkDialog(QDialog):
         self.room_combo.setEnabled(False)
         self.minutes_spin.setEnabled(False)
         self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(True)
         self.send_button.setEnabled(True)
@@ -355,7 +378,8 @@ class NetworkDialog(QDialog):
         )
         self.settings.sync()
         self._stop_discovery()
-        if self.manager.host(self.port_spin.value()):
+        password = self.host_password_edit.text()
+        if self.manager.host(self.port_spin.value(), password):
             self._set_waiting()
 
     def _start_connect(self) -> None:
@@ -366,7 +390,8 @@ class NetworkDialog(QDialog):
             self._append_system("请输入联机地址")
             return
         self._stop_discovery()
-        if self.manager.connect(address):
+        password = self.join_password_edit.text()
+        if self.manager.connect(address, password):
             self._set_connecting()
 
     def _disconnect(self) -> None:
