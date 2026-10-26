@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Iterator
 
 
 DEFAULT_BASE_URL = "https://api.deepseek.com"
@@ -15,13 +15,11 @@ SYSTEM_PROMPT = (
 )
 
 
-def ask_deepseek_coach(
-    prompt: str,
+def _client(
     api_key: str,
-    base_url: str = DEFAULT_BASE_URL,
-    model: str = DEFAULT_MODEL,
-    timeout: float = 60.0,
-) -> str:
+    base_url: str,
+    timeout: float,
+):
     if not api_key:
         raise RuntimeError(
             "未配置 DeepSeek API Key。请在教练窗口中点击“配置 DeepSeek”，"
@@ -33,13 +31,22 @@ def ask_deepseek_coach(
         raise RuntimeError(
             "缺少 openai 依赖，请先运行 pip install openai"
         ) from exc
-
-    client = OpenAI(
+    return OpenAI(
         api_key=api_key,
         base_url=base_url or DEFAULT_BASE_URL,
         timeout=timeout,
         max_retries=1,
     )
+
+
+def ask_deepseek_coach(
+    prompt: str,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 60.0,
+) -> str:
+    client = _client(api_key, base_url, timeout)
     response = client.chat.completions.create(
         model=model or DEFAULT_MODEL,
         messages=[
@@ -52,6 +59,36 @@ def ask_deepseek_coach(
     if not content:
         raise RuntimeError("DeepSeek 未返回内容")
     return content
+
+
+def stream_deepseek_coach(
+    prompt: str,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 60.0,
+) -> Iterator[str]:
+    client = _client(api_key, base_url, timeout)
+    response = client.chat.completions.create(
+        model=model or DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        stream=True,
+    )
+    produced = False
+    for chunk in response:
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        delta = choices[0].delta
+        content = getattr(delta, "content", None)
+        if content:
+            produced = True
+            yield content
+    if not produced:
+        raise RuntimeError("DeepSeek 未返回内容")
 
 
 def env_api_key() -> str:

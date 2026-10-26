@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import threading
 from typing import Optional
 
@@ -7,6 +8,7 @@ from PyQt6.QtCore import QSettings, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -22,9 +24,47 @@ from PyQt6.QtWidgets import (
 from coach_ai import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
-    ask_deepseek_coach,
     env_api_key,
+    stream_deepseek_coach,
 )
+
+
+KEYRING_SERVICE = "chess-pyqt-deepseek"
+KEYRING_USER = "api_key"
+
+
+def _keyring_get() -> str:
+    try:
+        import keyring
+    except ImportError:
+        return ""
+    try:
+        return (keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip()
+    except Exception:
+        return ""
+
+
+def _keyring_set(value: str) -> bool:
+    try:
+        import keyring
+    except ImportError:
+        return False
+    try:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, value)
+        return True
+    except Exception:
+        return False
+
+
+def _keyring_delete() -> None:
+    try:
+        import keyring
+    except ImportError:
+        return
+    try:
+        keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
+    except Exception:
+        pass
 
 
 def _format_eval(cp: Optional[int]) -> str:
@@ -73,7 +113,7 @@ class CoachConfigDialog(QDialog):
         form.addRow("模型", self.model_edit)
         layout.addLayout(form)
 
-        self.remember_check = QCheckBox("保存 API Key 到本地设置")
+        self.remember_check = QCheckBox("记住 API Key")
         self.remember_check.setChecked(
             bool(settings.value("coach_remember_key", 0))
             and bool(initial_key)
@@ -81,8 +121,9 @@ class CoachConfigDialog(QDialog):
         layout.addWidget(self.remember_check)
 
         warning = QLabel(
-            "注意：勾选后 API Key 会以明文形式保存在本机 QSettings 中。"
-            "如果不希望保存，保持未勾选即可，仅本次运行使用。"
+            "勾选后优先保存到系统凭据管理器（Windows Credential Manager）。"
+            "如果系统凭据管理器不可用，会退回到本地 QSettings 明文保存。"
+            "不希望保存时保持未勾选，仅本次运行使用。"
         )
         warning.setWordWrap(True)
         warning.setObjectName("HintLabel")
@@ -139,8 +180,12 @@ class CoachConfigDialog(QDialog):
         self.settings.setValue("coach_model", self.model)
         self.settings.setValue("coach_remember_key", int(remember))
         if remember and self.api_key:
-            self.settings.setValue("coach_api_key", self.api_key)
+            if _keyring_set(self.api_key):
+                self.settings.remove("coach_api_key")
+            else:
+                self.settings.setValue("coach_api_key", self.api_key)
         else:
+            _keyring_delete()
             self.settings.remove("coach_api_key")
         self.settings.sync()
         self.accept()
@@ -148,6 +193,7 @@ class CoachConfigDialog(QDialog):
 
 class CoachDialog(QDialog):
     resultReady = pyqtSignal(int, str, str)
+    streamChunk = pyqtSignal(int, str)
 
     def __init__(
         self,
@@ -160,6 +206,9 @@ class CoachDialog(QDialog):
         self._token = 0
         self._busy = False
         self._pending_local = ""
+        self._pending_cache_key = ""
+        self._stream_text = ""
+        self._cache: dict[str, str] = {}
 
         self.setWindowTitle("教练模式")
         self.setModal(False)
@@ -183,10 +232,22 @@ class CoachDialog(QDialog):
         hint = QLabel(
             "教练会结合 Stockfish 的评估/标注和 DeepSeek 的文本分析，"
             "提供逐着点评、漏着解释和练习建议。"
+            "生成 DeepSeek 报告时会发送棋谱、FEN、评估和标注，"
+            "不包含本机文件或个人信息。"
         )
         hint.setObjectName("HintLabel")
         hint.setWordWrap(True)
         root.addWidget(hint)
+
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("复盘范围"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("全部对局", "all")
+        self.scope_combo.addItem("开局（前 10 回合）", "opening")
+        self.scope_combo.addItem("中局（11-40 回合）", "middlegame")
+        self.scope_combo.addItem("残局（40 回合后）", "endgame")
+        scope_row.addWidget(self.scope_combo, 1)
+        root.addLayout(scope_row)
 
         action_row = QHBoxLayout()
         self.last_button = QPushButton("点评最后一手")
@@ -223,6 +284,7 @@ class CoachDialog(QDialog):
         root.addWidget(note)
 
         self.resultReady.connect(self._on_result)
+        self.streamChunk.connect(self._on_stream_chunk)
         self._update_status()
         self._apply_style()
 
@@ -255,6 +317,9 @@ class CoachDialog(QDialog):
         )
 
     def _saved_key(self) -> str:
+        stored = _keyring_get()
+        if stored:
+            return stored
         return str(self.settings.value("coach_api_key", "")).strip()
 
     def _base_url(self) -> str:
@@ -355,49 +420,94 @@ class CoachDialog(QDialog):
             )
             return
 
+        model = self._model()
+        cache_key = hashlib.sha256(
+            f"{model}|{prompt}".encode("utf-8")
+        ).hexdigest()
+        cached = self._cache.get(cache_key)
+        if cached:
+            self.report.setMarkdown(cached)
+            self.status_label.setText("已使用缓存的教练报告。")
+            return
+
         self._pending_local = local_report
+        self._pending_cache_key = cache_key
+        self._stream_text = ""
         self._token += 1
         token = self._token
         self._set_busy(True)
+        self.report.setMarkdown("正在生成教练报告…")
         base_url = self._base_url()
-        model = self._model()
 
         def worker() -> None:
+            pieces: list[str] = []
             try:
-                text = ask_deepseek_coach(
+                for chunk in stream_deepseek_coach(
                     prompt, key, base_url=base_url, model=model
-                )
+                ):
+                    if not chunk:
+                        continue
+                    pieces.append(chunk)
+                    self.streamChunk.emit(token, chunk)
             except Exception as exc:
                 self.resultReady.emit(
-                    token, "", f"{type(exc).__name__}: {exc}"
+                    token,
+                    "".join(pieces),
+                    f"{type(exc).__name__}: {exc}",
                 )
                 return
-            self.resultReady.emit(token, text, "")
+            self.resultReady.emit(token, "".join(pieces), "")
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _on_stream_chunk(self, token: int, chunk: str) -> None:
+        if token != self._token or not self._busy:
+            return
+        self._stream_text += chunk
+        self.report.setMarkdown(self._stream_text)
+        scrollbar = self.report.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
     def _on_result(self, token: int, text: str, error: str) -> None:
         if token != self._token:
             return
         self._set_busy(False)
+        self._stream_text = ""
         if error:
-            self.report.setMarkdown(
-                f"### DeepSeek 请求失败\n\n`{error}`\n\n"
-                f"---\n\n{self._pending_local}"
-            )
+            partial = text.strip()
+            if partial:
+                body = (
+                    f"### DeepSeek 请求中断\n\n`{error}`\n\n"
+                    f"{partial}\n\n---\n\n{self._pending_local}"
+                )
+            else:
+                body = (
+                    f"### DeepSeek 请求失败\n\n`{error}`\n\n"
+                    f"---\n\n{self._pending_local}"
+                )
+            self.report.setMarkdown(body)
             self.status_label.setText("DeepSeek 请求失败，已显示本地摘要。")
         else:
             self.report.setMarkdown(text)
+            if self._pending_cache_key and text:
+                self._cache[self._pending_cache_key] = text
             self.status_label.setText("教练报告已生成。")
         self._pending_local = ""
+        self._pending_cache_key = ""
 
     @staticmethod
-    def _annotation_lines(context: dict) -> list[str]:
+    def _annotation_lines(
+        context: dict,
+        min_ply: int = 1,
+        max_ply: int = 10**9,
+    ) -> list[str]:
         sans = context.get("sans", [])
         annotations = context.get("annotations", {})
         evals = context.get("evals", {})
         lines: list[str] = []
         for ply in sorted(annotations):
+            if not min_ply <= ply <= max_ply:
+                continue
             if not 1 <= ply <= len(sans):
                 continue
             san = sans[ply - 1]
@@ -408,12 +518,29 @@ class CoachDialog(QDialog):
             )
         return lines
 
+    def _scope_range(self) -> tuple[int, int, str]:
+        key = self.scope_combo.currentData()
+        if key == "opening":
+            return 1, 20, "开局（前 10 回合）"
+        if key == "middlegame":
+            return 21, 80, "中局（11-40 回合）"
+        if key == "endgame":
+            return 81, 10**9, "残局（40 回合后）"
+        return 1, 10**9, "全部对局"
+
     def _full_game_prompt(self, context: dict) -> str:
-        annotations = self._annotation_lines(context)
+        min_ply, max_ply, scope_label = self._scope_range()
+        annotations = self._annotation_lines(context, min_ply, max_ply)
         annotation_text = "\n".join(annotations) or "无"
+        scope_rule = (
+            ""
+            if scope_label == "全部对局"
+            else f"只重点点评“{scope_label}”范围内的着法，其他阶段可以略过。\n"
+        )
         return (
             "请复盘下面这局国际象棋。\n\n"
-            f"结果：{context.get('result') or '进行中'}\n\n"
+            f"结果：{context.get('result') or '进行中'}\n"
+            f"分析范围：{scope_label}\n\n"
             f"PGN：\n{context.get('pgn', '')}\n\n"
             "已有的 Stockfish 标注（评估为白方视角，单位兵）：\n"
             f"{annotation_text}\n\n"
@@ -422,7 +549,8 @@ class CoachDialog(QDialog):
             "没有被标注的普通着法可以合并概括。\n"
             "2. 指出关键漏着、转折点和更好的候选着法。\n"
             "3. 给出 3 条具体、可执行的训练建议。\n"
-            "4. 不要编造未提供的引擎评估；控制篇幅，条理清晰。"
+            "4. 不要编造未提供的引擎评估；控制篇幅，条理清晰。\n"
+            f"{scope_rule}"
         )
 
     def _last_move_prompt(self, context: dict) -> str:

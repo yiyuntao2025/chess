@@ -21,10 +21,19 @@ _ENGINE: Optional["_EngineSession"] = None
 
 
 @dataclass(frozen=True)
+class AnalysisLine:
+    multipv: int
+    score_cp: Optional[int] = None
+    mate: Optional[int] = None
+    pv: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class AnalysisResult:
     bestmove: str
     score_cp: Optional[int] = None
     mate: Optional[int] = None
+    lines: tuple[AnalysisLine, ...] = ()
 
 
 class _AnalysisCancelled(RuntimeError):
@@ -75,6 +84,32 @@ def _parse_score(line: str) -> tuple[Optional[int], Optional[int]]:
         if kind == "mate":
             return None, value
     return None, None
+
+
+def _parse_info(
+    line: str,
+) -> Optional[tuple[int, Optional[int], Optional[int], list[str]]]:
+    parts = line.split()
+    multipv = 1
+    if "multipv" in parts:
+        index = parts.index("multipv")
+        if index + 1 < len(parts):
+            try:
+                multipv = max(1, int(parts[index + 1]))
+            except ValueError:
+                multipv = 1
+    score_cp, mate = _parse_score(line)
+    pv: list[str] = []
+    if "pv" in parts:
+        index = parts.index("pv")
+        raw_pv = parts[index + 1 :]
+        for token in raw_pv:
+            if token.startswith("(") or token in ("bmc",):
+                break
+            pv.append(token)
+    if score_cp is None and mate is None and not pv:
+        return None
+    return multipv, score_cp, mate, pv
 
 
 class _EngineSession:
@@ -162,11 +197,14 @@ class _EngineSession:
         movetime_ms: int,
         skill_level: Optional[int],
         cancel_event: Optional[threading.Event],
+        multipv: int = 1,
     ) -> AnalysisResult:
         self._check_cancel(cancel_event)
 
         level = 20 if skill_level is None else max(0, min(20, int(skill_level)))
+        count = max(1, min(5, int(multipv)))
         self._send(f"setoption name Skill Level value {level}")
+        self._send(f"setoption name MultiPV value {count}")
         self._send("isready")
         self.wait_for("readyok", STARTUP_TIMEOUT)
 
@@ -186,34 +224,72 @@ class _EngineSession:
         bestmove: Optional[str] = None
         score_cp: Optional[int] = None
         mate: Optional[int] = None
+        lines: dict[int, AnalysisLine] = {}
         deadline = time.monotonic() + max(10.0, search_ms / 1000 + 15.0)
+        cancel_sent = False
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise RuntimeError("Stockfish 思考超时")
+            if (
+                cancel_event is not None
+                and cancel_event.is_set()
+                and not cancel_sent
+            ):
+                try:
+                    self._send("stop")
+                except RuntimeError:
+                    pass
+                cancel_sent = True
+            timeout = 0.05 if cancel_event is not None else remaining
             try:
-                line = self._output.get(timeout=remaining)
-            except Empty as exc:
-                raise RuntimeError("Stockfish 思考超时") from exc
+                line = self._output.get(timeout=min(remaining, timeout))
+            except Empty:
+                continue
             if line is None:
                 raise RuntimeError("Stockfish 进程已退出")
 
             if line.startswith("info"):
-                line_cp, line_mate = _parse_score(line)
-                if line_cp is not None:
-                    score_cp, mate = line_cp, None
-                elif line_mate is not None:
-                    score_cp, mate = None, line_mate
+                parsed = _parse_info(line)
+                if parsed is not None:
+                    index, line_cp, line_mate, pv = parsed
+                    lines[index] = AnalysisLine(
+                        multipv=index,
+                        score_cp=line_cp,
+                        mate=line_mate,
+                        pv=tuple(pv),
+                    )
+                    if index == 1 and (
+                        line_cp is not None or line_mate is not None
+                    ):
+                        score_cp, mate = line_cp, line_mate
 
             if line.startswith("bestmove"):
                 parts = line.split()
                 if len(parts) >= 2:
                     bestmove = parts[1]
+                if cancel_sent or (
+                    cancel_event is not None and cancel_event.is_set()
+                ):
+                    raise _AnalysisCancelled("分析已取消")
                 break
 
         if not bestmove or bestmove == "(none)":
             raise RuntimeError("Stockfish 没有返回有效着法")
-        return AnalysisResult(bestmove=bestmove, score_cp=score_cp, mate=mate)
+        ordered = tuple(
+            sorted(lines.values(), key=lambda item: item.multipv)
+        )
+        if ordered and score_cp is None and mate is None:
+            primary = next(
+                (item for item in ordered if item.multipv == 1), ordered[0]
+            )
+            score_cp, mate = primary.score_cp, primary.mate
+        return AnalysisResult(
+            bestmove=bestmove,
+            score_cp=score_cp,
+            mate=mate,
+            lines=ordered,
+        )
 
     def close(self) -> None:
         if self._closed:
@@ -273,6 +349,7 @@ def _run_uci(
     movetime_ms: int,
     skill_level: Optional[int],
     cancel_event: Optional[threading.Event] = None,
+    multipv: int = 1,
 ) -> AnalysisResult:
     path = find_stockfish()
     if path is None:
@@ -292,7 +369,12 @@ def _run_uci(
         session = _get_session(path)
         try:
             return session.search(
-                fen, moves, movetime_ms, skill_level, cancel_event
+                fen,
+                moves,
+                movetime_ms,
+                skill_level,
+                cancel_event,
+                multipv,
             )
         except _AnalysisCancelled:
             raise
@@ -320,5 +402,8 @@ def analyse_position(
     moves: Optional[list[str]] = None,
     movetime_ms: int = 400,
     cancel_event: Optional[threading.Event] = None,
+    multipv: int = 1,
 ) -> AnalysisResult:
-    return _run_uci(fen, moves, movetime_ms, None, cancel_event)
+    return _run_uci(
+        fen, moves, movetime_ms, None, cancel_event, multipv
+    )

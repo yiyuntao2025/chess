@@ -59,6 +59,7 @@ from pgn_import import PGNImportError, parse_pgn
 from session_store import clear_state, load_state, save_state
 from sound_player import SoundPlayer
 from stockfish_ai import (
+    AnalysisLine,
     AnalysisResult,
     analyse_position,
     ask_stockfish_for_move,
@@ -75,6 +76,11 @@ CHECK_COLOR = QColor(220, 60, 60, 110)
 LEGAL_DOT_COLOR = QColor(30, 30, 30, 110)
 LEGAL_RING_COLOR = QColor(30, 30, 30, 140)
 HINT_COLOR = QColor(255, 166, 0, 210)
+HINT_COLORS = (
+    HINT_COLOR,
+    QColor(80, 160, 255, 190),
+    QColor(80, 200, 120, 190),
+)
 
 THEMES = {
     "经典": (QColor("#f0d9b5"), QColor("#b58863")),
@@ -176,6 +182,90 @@ class EvalBar(QWidget):
         painter.drawLine(
             QPointF(inner.left(), inner.center().y()),
             QPointF(inner.right(), inner.center().y()),
+        )
+
+
+class EvalGraphWidget(QWidget):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(74)
+        self.setToolTip("评估曲线（白方视角）")
+        self.scores: dict[int, int] = {}
+        self.current_ply = 0
+
+    def set_scores(self, scores: dict[int, int], current_ply: int) -> None:
+        self.scores = dict(scores)
+        self.current_ply = current_ply
+        self.update()
+
+    def clear(self) -> None:
+        self.scores.clear()
+        self.current_ply = 0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        outer = QRectF(self.rect())
+        painter.fillRect(outer, QColor("#1d1b19"))
+        painter.setPen(QPen(QColor("#3d3933"), 1))
+        painter.drawRect(outer.adjusted(0.5, 0.5, -0.5, -0.5))
+        inner = outer.adjusted(8, 8, -8, -8)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+
+        font = QFont(self.font())
+        font.setPixelSize(10)
+        painter.setFont(font)
+        painter.setPen(QColor("#8d877d"))
+        painter.drawText(
+            QRectF(inner.left(), 2, inner.width(), 12),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            "评估曲线",
+        )
+
+        if not self.scores:
+            painter.setPen(QColor("#77716a"))
+            painter.drawText(
+                inner,
+                Qt.AlignmentFlag.AlignCenter,
+                "暂无数据",
+            )
+            return
+
+        max_ply = max(
+            [self.current_ply, 1, *self.scores.keys()]
+        )
+        center_y = inner.center().y()
+        painter.setPen(QPen(QColor(120, 115, 105, 100), 1))
+        painter.drawLine(
+            QPointF(inner.left(), center_y),
+            QPointF(inner.right(), center_y),
+        )
+
+        points: list[QPointF] = []
+        for ply in sorted(self.scores):
+            clamped = max(-800, min(800, self.scores[ply]))
+            x = inner.left() + (ply / max_ply) * inner.width()
+            y = center_y - (clamped / 800.0) * (inner.height() / 2 - 8)
+            points.append(QPointF(x, y))
+        if len(points) >= 2:
+            painter.setPen(
+                QPen(QColor("#d8b26a"), 2, Qt.PenStyle.SolidLine)
+            )
+            painter.drawPolyline(QPolygonF(points))
+        elif points:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#d8b26a"))
+            painter.drawEllipse(points[0], 2.5, 2.5)
+
+        marker_x = inner.left() + (
+            min(self.current_ply, max_ply) / max_ply
+        ) * inner.width()
+        painter.setPen(QPen(QColor("#7bd88f"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(
+            QPointF(marker_x, inner.top()),
+            QPointF(marker_x, inner.bottom()),
         )
 
 
@@ -343,7 +433,7 @@ class ChessBoard(QWidget):
         self.theme_name = "经典"
         self.light_color, self.dark_color = THEMES[self.theme_name]
         self.show_coordinates = True
-        self.hint_move: Optional[Move] = None
+        self.hint_moves: list[Move] = []
         self._redo_moves: list[Move] = []
         self._dragging = False
         self._drag_piece: Optional[str] = None
@@ -362,7 +452,7 @@ class ChessBoard(QWidget):
         self.game.reset()
         self._redo_moves.clear()
         self.reviewing = False
-        self.hint_move = None
+        self.hint_moves = []
         self.selected = None
         self.legal_moves = []
         self.legal_targets = set()
@@ -377,7 +467,7 @@ class ChessBoard(QWidget):
         self.game = game
         self._redo_moves.clear()
         self.reviewing = reviewing
-        self.hint_move = None
+        self.hint_moves = []
         self.selected = None
         self.legal_moves = []
         self.legal_targets = set()
@@ -397,7 +487,7 @@ class ChessBoard(QWidget):
         self.selected = None
         self.legal_moves = []
         self.legal_targets = set()
-        self.hint_move = None
+        self.hint_moves = []
         self.result_override = result_tag
         self._finish_message = message
         self.game_over = True
@@ -414,7 +504,7 @@ class ChessBoard(QWidget):
         self._redo_moves.clear()
         self.result_override = None
         self._finish_message = None
-        self.hint_move = None
+        self.hint_moves = []
         self.selected = None
         self.legal_moves = []
         self.legal_targets = set()
@@ -455,7 +545,7 @@ class ChessBoard(QWidget):
             self.selected = None
             self.legal_moves = []
             self.legal_targets = set()
-            self.hint_move = None
+            self.hint_moves = []
             self.game_over = bool(self.game.result_tag())
             self.result_override = None
             self._finish_message = None
@@ -485,7 +575,10 @@ class ChessBoard(QWidget):
         self.update()
 
     def set_hint(self, move: Optional[Move]) -> None:
-        self.hint_move = move
+        self.set_hint_moves([move] if move is not None else [])
+
+    def set_hint_moves(self, moves: list[Move]) -> None:
+        self.hint_moves = list(moves)
         self.update()
 
     def is_animating(self) -> bool:
@@ -640,7 +733,7 @@ class ChessBoard(QWidget):
         if self._animation is not None:
             self._cancel_animation()
         self._redo_moves.clear()
-        self.hint_move = None
+        self.hint_moves = []
         self._dragging = False
         self._drag_piece = None
         self._drag_pos = None
@@ -959,8 +1052,16 @@ class ChessBoard(QWidget):
                     square * 0.92,
                 )
 
-        if self.hint_move is not None:
-            self._draw_hint_arrow(painter, left, top, square)
+        for index, move in enumerate(self.hint_moves[: len(HINT_COLORS)]):
+            self._draw_hint_arrow(
+                painter,
+                left,
+                top,
+                square,
+                move,
+                HINT_COLORS[index],
+                1.0 - index * 0.18,
+            )
 
         if (
             self._dragging
@@ -1026,11 +1127,15 @@ class ChessBoard(QWidget):
         painter.restore()
 
     def _draw_hint_arrow(
-        self, painter: QPainter, left: float, top: float, square: float
+        self,
+        painter: QPainter,
+        left: float,
+        top: float,
+        square: float,
+        move: Move,
+        color: QColor,
+        scale: float = 1.0,
     ) -> None:
-        move = self.hint_move
-        if move is None:
-            return
         from_view = self._board_to_view(move.from_row, move.from_col)
         to_view = self._board_to_view(move.to_row, move.to_col)
         start_x, start_y = self._square_center(
@@ -1045,19 +1150,19 @@ class ChessBoard(QWidget):
 
         ux, uy = dx / length, dy / length
         tip_x, tip_y = end_x, end_y
-        head_length = square * 0.28
-        head_width = square * 0.20
+        head_length = square * 0.28 * scale
+        head_width = square * 0.20 * scale
         base_x = tip_x - ux * head_length
         base_y = tip_y - uy * head_length
         perp_x, perp_y = -uy, ux
 
         painter.save()
-        pen = QPen(HINT_COLOR, max(4.0, square * 0.075))
+        pen = QPen(color, max(3.0, square * 0.075 * scale))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(QPointF(start_x, start_y), QPointF(base_x, base_y))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(HINT_COLOR)
+        painter.setBrush(color)
         painter.drawPolygon(
             QPolygonF(
                 [
@@ -1340,6 +1445,12 @@ class MainWindow(QMainWindow):
         self.eval_label.setObjectName("AiStatus")
         self.eval_label.setWordWrap(True)
         side_layout.addWidget(self.eval_label)
+        self.eval_graph = EvalGraphWidget()
+        side_layout.addWidget(self.eval_graph)
+        self.accuracy_label = QLabel("准确率：--")
+        self.accuracy_label.setObjectName("HintLabel")
+        self.accuracy_label.setWordWrap(True)
+        side_layout.addWidget(self.accuracy_label)
 
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("双人对战", "two")
@@ -2558,6 +2669,8 @@ class MainWindow(QMainWindow):
             self.clock.stop()
         self._update_clock_labels()
         self._refresh_clock_controls()
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
         self._schedule_session_save()
         self._refresh_online_actions()
 
@@ -2912,9 +3025,11 @@ class MainWindow(QMainWindow):
         if data is None:
             self.eval_bar.reset()
             self.eval_label.setText("评估：--")
-            return
-        self.eval_bar.set_evaluation(*data)
-        self.eval_label.setText(self._format_eval(*data))
+        else:
+            self.eval_bar.set_evaluation(*data)
+            self.eval_label.setText(self._format_eval(*data))
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
 
     @staticmethod
     def _format_eval(cp: Optional[int], mate: Optional[int]) -> str:
@@ -2961,7 +3076,11 @@ class MainWindow(QMainWindow):
         self._set_hint_busy(False)
         self.eval_bar.reset()
         self.eval_label.setText("评估：--")
+        self.eval_graph.clear()
+        self.accuracy_label.setText("准确率：--")
+        self.accuracy_label.setToolTip("")
         self.hint_label.setText("提示：--")
+        self.hint_label.setToolTip("")
         self.board.set_hint(None)
 
     def _schedule_auto_analysis(self) -> None:
@@ -2972,6 +3091,14 @@ class MainWindow(QMainWindow):
 
     def _auto_analysis_timeout(self) -> None:
         if self._auto_analysis_token != self._analysis_token:
+            return
+        if self._hint_busy or self.ai_thinking:
+            return
+        if (
+            self.ai_enabled
+            and not self.board.is_reviewing()
+            and self._ai_is_turn()
+        ):
             return
         self._start_analysis(self._auto_analysis_token, False)
 
@@ -3001,6 +3128,7 @@ class MainWindow(QMainWindow):
                 moves=moves,
                 movetime_ms=900 if explicit else 320,
                 cancel_event=cancel_event,
+                multipv=3 if explicit else 1,
             )
         except Exception as exc:
             self.analysisReady.emit(token, str(exc), explicit)
@@ -3034,6 +3162,24 @@ class MainWindow(QMainWindow):
             if mate is not None:
                 mate = -mate
 
+        display_lines: list[AnalysisLine] = []
+        for line in result.lines:
+            line_cp = line.score_cp
+            line_mate = line.mate
+            if game.turn == "b":
+                if line_cp is not None:
+                    line_cp = -line_cp
+                if line_mate is not None:
+                    line_mate = -line_mate
+            display_lines.append(
+                AnalysisLine(
+                    multipv=line.multipv,
+                    score_cp=line_cp,
+                    mate=line_mate,
+                    pv=line.pv,
+                )
+            )
+
         self.eval_bar.set_evaluation(cp, mate)
         self.eval_label.setText(self._format_eval(cp, mate))
         self._eval_display[ply] = (cp, mate)
@@ -3043,29 +3189,111 @@ class MainWindow(QMainWindow):
         else:
             value = cp
 
+        notation_changed = False
         if value is not None:
             before = self._eval_scores.get(ply - 1)
             self._eval_scores[ply] = value
-            if before is not None and ply > 0:
-                mover = "w" if ply % 2 == 1 else "b"
+            node = self.game_tree.current
+            if before is not None and ply > 0 and not node.is_root:
+                mover = node.color
                 loss = before - value if mover == "w" else value - before
                 symbol = self._score_symbol(loss)
                 if symbol:
                     self._move_annotations[ply] = symbol
                 else:
                     self._move_annotations.pop(ply, None)
-                self._refresh_notation()
+                notation_changed = True
+
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
+        if notation_changed:
+            self._refresh_notation()
 
         if explicit:
-            move = game.find_move_by_uci(result.bestmove)
-            if move is not None:
-                self.board.set_hint(move)
-                san = game.san_for_move(move)
+            moves: list[Move] = []
+            for line in display_lines:
+                if not line.pv:
+                    continue
+                move = game.find_move_by_uci(line.pv[0])
+                if move is not None and move not in moves:
+                    moves.append(move)
+            if not moves:
+                fallback = game.find_move_by_uci(result.bestmove)
+                if fallback is not None:
+                    moves.append(fallback)
+            if moves:
+                self.board.set_hint_moves(moves[:3])
+                primary = moves[0]
+                san = game.san_for_move(primary)
                 self.hint_label.setText(
                     f"建议：{san}（{self._short_eval(cp, mate)}）"
                 )
+                tooltip_lines: list[str] = []
+                for index, line in enumerate(display_lines[:3]):
+                    if line.pv:
+                        line_move = game.find_move_by_uci(line.pv[0])
+                        line_san = (
+                            game.san_for_move(line_move)
+                            if line_move is not None
+                            else line.pv[0]
+                        )
+                    else:
+                        line_san = "?"
+                    tooltip_lines.append(
+                        f"{index + 1}. {line_san} "
+                        f"({self._short_eval(line.score_cp, line.mate)})"
+                    )
+                self.hint_label.setToolTip("\n".join(tooltip_lines))
             else:
+                self.board.set_hint_moves([])
                 self.hint_label.setText("提示：当前局面没有可用着法")
+                self.hint_label.setToolTip("")
+
+    def _refresh_eval_graph(self) -> None:
+        self.eval_graph.set_scores(
+            self._eval_scores, self.game_tree.current.ply
+        )
+
+    def _accuracy_stats(self) -> dict[str, tuple[float, int, float]]:
+        totals = {
+            "w": [0.0, 0],
+            "b": [0.0, 0],
+        }
+        for node in self.game_tree.mainline():
+            before = self._eval_scores.get(node.ply - 1)
+            after = self._eval_scores.get(node.ply)
+            if before is None or after is None:
+                continue
+            loss = before - after if node.color == "w" else after - before
+            loss = max(0.0, min(1000.0, float(loss)))
+            totals[node.color][0] += loss
+            totals[node.color][1] += 1
+        stats: dict[str, tuple[float, int, float]] = {}
+        for color, (loss_sum, count) in totals.items():
+            if count:
+                acpl = loss_sum / count
+                accuracy = 100.0 * math.exp(-acpl / 200.0)
+                stats[color] = (acpl, count, accuracy)
+            else:
+                stats[color] = (0.0, 0, 0.0)
+        return stats
+
+    def _refresh_accuracy(self) -> None:
+        stats = self._accuracy_stats()
+        parts: list[str] = []
+        tooltip: list[str] = []
+        for color, label in (("w", "白"), ("b", "黑")):
+            acpl, count, accuracy = stats[color]
+            if count:
+                parts.append(f"{label} {accuracy:.0f}")
+                tooltip.append(
+                    f"{label}方：准确率 {accuracy:.1f}%，"
+                    f"平均损失 {acpl:.0f} cp（{count} 手）"
+                )
+            else:
+                parts.append(f"{label} --")
+        self.accuracy_label.setText("准确率：" + " / ".join(parts))
+        self.accuracy_label.setToolTip("\n".join(tooltip))
 
     def _request_hint(self) -> None:
         if (
