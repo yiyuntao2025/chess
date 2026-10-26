@@ -662,6 +662,7 @@ class ChessBoard(QWidget):
         if self._animation is not None:
             self._cancel_animation()
         self._redo_moves.clear()
+        self.reviewing = False
         self.hint_moves = []
         self._dragging = False
         self._drag_piece = None

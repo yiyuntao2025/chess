@@ -14,6 +14,7 @@
 - Stockfish 常驻引擎、提示、MultiPV 候选着、棋盘箭头、评估曲线与准确率统计
 - DeepSeek 教练：流式输出、报告缓存、开局/中局/残局范围选择、系统凭据管理器保存密钥
 - 局域网联机：房间发现、WebSocket、聊天、棋钟、提和、认输、悔棋、暂停、再战、房间密码
+- 房主可开启观战模式，观战者通过联机端口 + 1 以只读方式观看对局
 - 联机对局中自动关闭引擎提示，降低作弊风险
 - 主题、坐标、音效、拖拽走子、走子动画
 
@@ -52,6 +53,7 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 | `game_tree.py` | 变例树与序列化 |
 | `stockfish_ai.py` | Stockfish 常驻引擎、MultiPV 与可取消分析 |
 | `lan.py` / `lan_ui.py` | 局域网 WebSocket 联机与协议校验 |
+| `spectator.py` / `spectator_ui.py` | 只读观战服务与观战窗口 |
 | `chess_clock.py` | 棋钟 |
 | `coach_ai.py` / `coach_ui.py` | DeepSeek 教练 |
 | `fen_dialog.py` | FEN 局面对话框 |

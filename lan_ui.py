@@ -7,6 +7,7 @@ from typing import Optional
 from PyQt6.QtCore import QSettings, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QGroupBox,
@@ -115,6 +116,15 @@ class NetworkDialog(QDialog):
             "可选房间密码（留空则不设密码）"
         )
         host_layout.addWidget(self.host_password_edit)
+
+        self.spectator_checkbox = QCheckBox("允许观战（端口 + 1）")
+        self.spectator_checkbox.setChecked(
+            bool(int(self.settings.value("allow_spectators", 0)))
+        )
+        self.spectator_checkbox.setToolTip(
+            "开启后，其他设备可连接房主端口的下一个端口观战"
+        )
+        host_layout.addWidget(self.spectator_checkbox)
 
         address_row = QHBoxLayout()
         self.address_display = QLineEdit()
@@ -281,6 +291,7 @@ class NetworkDialog(QDialog):
         self.increment_spin.setEnabled(True)
         self.host_password_edit.setEnabled(True)
         self.join_password_edit.setEnabled(True)
+        self.spectator_checkbox.setEnabled(True)
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
         self._set_quick_enabled(False)
@@ -302,6 +313,7 @@ class NetworkDialog(QDialog):
         self.increment_spin.setEnabled(False)
         self.host_password_edit.setEnabled(False)
         self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
@@ -323,6 +335,7 @@ class NetworkDialog(QDialog):
         self.increment_spin.setEnabled(False)
         self.host_password_edit.setEnabled(False)
         self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(False)
         self.send_button.setEnabled(False)
@@ -344,6 +357,7 @@ class NetworkDialog(QDialog):
         self.increment_spin.setEnabled(False)
         self.host_password_edit.setEnabled(False)
         self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
         self._stop_discovery()
         self.chat_input.setEnabled(True)
         self.send_button.setEnabled(True)
@@ -358,6 +372,15 @@ class NetworkDialog(QDialog):
             self.minutes_spin.value() * 60,
             self.increment_spin.value(),
         )
+
+    def spectator_enabled(self) -> bool:
+        return self.spectator_checkbox.isChecked()
+
+    def host_port(self) -> int:
+        return self.port_spin.value()
+
+    def host_password(self) -> str:
+        return self.host_password_edit.text()
 
     def apply_time_control(self, base_seconds: int, increment: int) -> None:
         self.minutes_spin.blockSignals(True)
@@ -375,6 +398,9 @@ class NetworkDialog(QDialog):
         )
         self.settings.setValue(
             "online_clock_increment", self.increment_spin.value()
+        )
+        self.settings.setValue(
+            "allow_spectators", int(self.spectator_checkbox.isChecked())
         )
         self.settings.sync()
         self._stop_discovery()

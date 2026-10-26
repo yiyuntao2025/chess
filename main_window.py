@@ -50,6 +50,8 @@ from pgn_export import build_pgn_tree
 from pgn_import import PGNImportError, parse_pgn
 from session_store import clear_state, load_state, save_state
 from sound_player import SoundPlayer
+from spectator import SpectatorServer
+from spectator_ui import SpectatorDialog
 from stockfish_ai import (
     AnalysisLine,
     AnalysisResult,
@@ -88,6 +90,8 @@ class MainWindow(QMainWindow):
         self._online_paused = False
         self._network_dialog: Optional[NetworkDialog] = None
         self._coach_dialog: Optional[CoachDialog] = None
+        self._spectator_dialog: Optional[SpectatorDialog] = None
+        self._spectator_server: Optional[SpectatorServer] = None
         self.engine_path = find_stockfish()
         self.sound_player = SoundPlayer()
         self.lan = LanManager(self)
@@ -144,6 +148,7 @@ class MainWindow(QMainWindow):
         export_button = QPushButton("导出 PGN")
         self.online_button = QPushButton("联机")
         join_button = QPushButton("连接")
+        watch_button = QPushButton("观战")
         self.undo_button.clicked.connect(self._undo)
         self.reset_button.clicked.connect(self._new_game)
         flip_button.clicked.connect(self._flip_board)
@@ -151,8 +156,10 @@ class MainWindow(QMainWindow):
         export_button.clicked.connect(self._export_pgn)
         self.online_button.clicked.connect(self._show_network_dialog)
         join_button.clicked.connect(self._show_network_dialog_connect)
+        watch_button.clicked.connect(self._show_spectator_dialog)
         top_bar.addWidget(self.online_button)
         top_bar.addWidget(join_button)
+        top_bar.addWidget(watch_button)
         top_bar.addWidget(flip_button)
         top_bar.addWidget(self.fen_button)
         top_bar.addWidget(export_button)
@@ -529,6 +536,13 @@ class MainWindow(QMainWindow):
         self._coach_dialog.raise_()
         self._coach_dialog.activateWindow()
 
+    def _show_spectator_dialog(self) -> None:
+        if self._spectator_dialog is None:
+            self._spectator_dialog = SpectatorDialog(self)
+        self._spectator_dialog.show()
+        self._spectator_dialog.raise_()
+        self._spectator_dialog.activateWindow()
+
     def coach_context(self) -> dict:
         game = self.board.game
         sans, result = self._full_san_result()
@@ -888,6 +902,50 @@ class MainWindow(QMainWindow):
                 self.board.locked_color = self.remote_color
                 self.board.input_locked = False
 
+    def _on_spectator_hosting(self, address: str) -> None:
+        self._network_system(f"观战地址：{address}")
+        self.statusBar().showMessage(f"观战已开启：{address}", 8000)
+
+    def _on_spectator_error(self, message: str) -> None:
+        self._network_system(message)
+        self.statusBar().showMessage(message, 6000)
+
+    def _start_spectator_server(self, port: int, password: str) -> None:
+        self._stop_spectator_server()
+        if not 1 <= port <= 65535:
+            self._network_system("观战端口超出范围，未开启观战")
+            return
+        server = SpectatorServer(self)
+        server.hosting.connect(self._on_spectator_hosting)
+        server.errorOccurred.connect(self._on_spectator_error)
+        if server.start(port, password):
+            self._spectator_server = server
+            self._broadcast_spectator_state()
+
+    def _stop_spectator_server(self) -> None:
+        server = self._spectator_server
+        self._spectator_server = None
+        if server is not None:
+            server.stop()
+
+    def _broadcast_spectator_state(self) -> None:
+        if self._spectator_server is None:
+            return
+        white, black = self._pgn_names()
+        self._spectator_server.set_state(
+            {
+                "type": "spectate_state",
+                "pgn": self._pgn_text(),
+                "fen": self.board.game.to_fen(),
+                "ply": self.game_tree.current.ply,
+                "flipped": bool(self.board.flipped),
+                "white": white,
+                "black": black,
+                "result": self.board.final_result()
+                or self.game_tree.result,
+            }
+        )
+
     def _on_lan_connected(self, is_host: bool) -> None:
         if not self.lan.is_connected():
             return
@@ -926,6 +984,18 @@ class MainWindow(QMainWindow):
             )
         self._set_online_controls()
         self._reset_online_game()
+        if (
+            is_host
+            and self._network_dialog is not None
+            and self._network_dialog.spectator_enabled()
+        ):
+            port = self._network_dialog.host_port()
+            if port < 65535:
+                self._start_spectator_server(
+                    port + 1, self._network_dialog.host_password()
+                )
+            else:
+                self._network_system("端口 65535 无法开启观战端口")
         side = "白" if is_host else "黑"
         self.setWindowTitle(f"国际象棋 - 联机（你执{side}）")
         self.ai_status.setText(f"联机：已连接（你执{side}）")
@@ -941,6 +1011,7 @@ class MainWindow(QMainWindow):
         self.is_online_host = False
         self.net_game_id = 0
         self.online_time_control = None
+        self._stop_spectator_server()
         self._clock_pending_move = False
         self._draw_offer_pending = False
         self._undo_request_pending = False
@@ -1652,6 +1723,7 @@ class MainWindow(QMainWindow):
         self._refresh_eval_graph()
         self._refresh_accuracy()
         self._schedule_session_save()
+        self._broadcast_spectator_state()
         self._refresh_online_actions()
 
     def _sync_clock_turn(self) -> None:
@@ -2730,6 +2802,9 @@ class MainWindow(QMainWindow):
         self._session_save_timer.stop()
         self._save_session()
         self._save_settings()
+        self._stop_spectator_server()
+        if self._spectator_dialog is not None:
+            self._spectator_dialog.close()
         if self._network_dialog is not None:
             self._network_dialog.hide()
         self.lan.shutdown()
