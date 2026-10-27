@@ -1,0 +1,10188 @@
+"""国际象棋 Chess — 单文件版本。
+
+棋子图片以 Base64 形式内嵌在本文件中，运行时无需 assets/pieces 目录。
+依赖：PyQt6；DeepSeek 教练可选安装 openai 与 keyring。
+"""
+
+from __future__ import annotations
+
+import base64
+import sys
+
+
+PIECE_IMAGES_B64 = {
+    "BB": (
+        "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"
+    ),
+    "BW": (
+        "iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYAAAA8AXHiAAAfC0lEQVR42uzWv08TYRwG8L5ABwcxd3GzadC6laqUX727933v"
+        "rneFRauzGqNxdfIPcMLFVcXJyX8AExNcHEwgHYAF/gyWJqQ/aLl+ue/RNoUEQhhYeD7JkzZvrp2ePPemAAAAAAAAAAAAAAAA"
+        "roXgjErOAK5CCDEWf0ykzjcuhOCgZHDpQnGG0un07Ww2ey+Xy2VMwzCFEBNnS5YCuMCwMJlMpvi4UPjiKvlfOfZ+JSg3lyph"
+        "w3f1gXTsPccq/XyYe1A1TXPwG4H1glNEbLBS96em8tK2/sRForDsU+B7STwtyVWSfFcn52XPpf4zu9P5/MuR/8J6wbBUnNSj"
+        "QuHDciXscnk40ra6szNPjuaKM734e09Lp1damO/FZ5FdWux6WkX8XOC5pJX8ZZrGLZQLBsb6pfrEC8Sr5GnVnZ8t0ovqM/q8"
+        "skK/19Zoc2ODarUa/V1fp+/fvtKb168oLheX78h3NYdXbMs0jLvDuxrcWOMnpZr+yKXiBVKOHWnp0I/VVarX63SedrudlOx5"
+        "9SlZiwu8cIee1lT23X+TdyaTBcSd6wbi11X/TjW3XAkjTytSjhUthUGyTKMFajQa1Gq1kjSbzSSdTofYzvYWvX/3lteLy9UJ"
+        "jtkxc5UGojAKa2HhC9hpooWFEFww6piIFm4o2riiqM+h2KpgZStCIBqwVCx8huhkX10gWiSTSAqJXZLJ/b3nkgkpRMbWuQem"
+        "CmSK+Tjn/If3scGB/lN5LVpcbpfi50AgAnUUclVVCQI4gKpcLv/4GL99FAqkPvhpZ3sLcDEAyuHUObB9MhItJsOt7HbbEiKQ"
+        "g1VzDg2Sz3dlQIUH4PwKlq7rlMtmKZmI81i8x/UIQEX5dymKp/46CZaFJMByjSseXHS48DY31kXUQQZUZsDK5zUKqI/0+vJM"
+        "hwf7NOocZtz5AOsn37g6ZNeyjlrra3r7hHv8HZsUnw/YpddLUBM8ph0LYD2lU3R3ewPHwsPQ1Xq67ctyfrCIjM7T1dXZy2Ow"
+        "YoAQiYQJgmuZhQvO9pbJUCgYoFg0Ior82uoK8VW+CrB4zzqov7OtRep/q6lfTeHj83mB5mZnWLFYNK7AP7lWOpWkcCgowErE"
+        "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"
+        "AAAAAElFTkSuQmCC"
+    ),
+    "KB": (
+        "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"
+        "gg=="
+    ),
+    "KW": (
+        "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"
+        "Vs2vfwE7BYspjKZXzwAAAABJRU5ErkJggg=="
+    ),
+    "PB": (
+        "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"
+    ),
+    "PW": (
+        "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"
+    ),
+    "QB": (
+        "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"
+        "sJKchOUAAAAASUVORK5CYII="
+    ),
+    "QW": (
+        "iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYAAAA8AXHiAAApPklEQVR42uzVzUrjUBQH8JzkzmZmyLQdNzOj4ExdzfQj/Uqb"
+        "pulH0ul7SF9BfAvBhSu34k7c+w4iuPAZXIgoukxNPQdquVQU8YMK/n9wuL00yf2Te5IYAAAAAAAAAAAAAAAAAAAA8HR0r2Z9"
+        "rBzwXERk8qAe2TyTiBSxN84hlKz3UA4uRZIX3i8ismabybIsxfWVy+b6whNz9hwu8w0a2zI0Slnis+SY5Pl0r9klP7wfxPSN"
+        "XFz89bdYyK93gmC/5XvHgd8847riOuU69L3Gzkr2zzCTyfzUrqGM1zG9Tjqd/rGSzQ55vV1e90jWn+Q441wnnG+Pc65JXu18"
+        "aXR8JudNf8p/Ly8HraZ3MOiHcT/sjaNedyxj2O1Iye/p/H8Uyv+XTiG/mUqllrS3Br2guU2DLSx8X+Lm2e512heDfjTNIaOs"
+        "rc9lHEThiHPvc37XmMDba070m29/s6nkOBuyibJxvKFj32vE1XJpVCoWbjy3lnh1N+F5UnGKN81GPe62g5EcN9nc63zu33Dm"
+        "U/Zk+vH5XG41Crvnd83cbvmjhluLJUetUk547aReqyZlzuFWKzE3YCw5pCR/yXG2bNtWaK45IaJbdswlJKoojONRINEiUiOI"
+        "zB7bZsyUHsTM1ansQVDZi6KyiGpRLVpYm6KFPaB32sKKyoJaVJselGEo5cKC1BlnfKZROoY7UWwcnfv49/1lPDhhg7MYV/PB"
+        "YbjOPcdz5/vd//873zR+piQnz17jyqkUOJgci9BIwqyd2/Nx6eIFPHv6FB8rKsDx8sVz3Lh+DQUH9kNAgyTckjl6juYA52ct"
+        "y7wZqUDR49/7OJ/r5GqaDGeIIMknTp44jrulpXj96hWqKivx9s0bPHr4EGdOF2LThvXgfQIgYbcIujzPV3muOQm4JjeUQqSk"
+        "JE8XVagNv/EjidyzexfK37/H4OAg/hf8rqqqCseOHiFchMDMcToMUQzCVapObBOJ8H2cJ/O5Fm2NqojLly6io6MD0cLv9+Oe"
+        "QMe5VDM+h6xBtWsSuFK5duLUOHkxohKa0/EibH2hlcuzcaGoKAIoPRTidcQIBoMIyd8Zuq6j+PYtCAgQsCwZrM2QYbedUoV4"
+        "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"
+    ),
+    "RB": (
+        "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"
+        "L/+ECHtIBSNAAAAAAElFTkSuQmCC"
+    ),
+    "RW": (
+        "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"
+        "TkSuQmCC"
+    ),
+    "WB": (
+        "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"
+    ),
+    "WW": (
+        "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"
+    ),
+}
+
+
+# ---- app_constants.py ----
+
+from pathlib import Path
+
+from PyQt6.QtGui import QColor
+
+
+BASE_DIR = Path(__file__).resolve().parent
+PIECES_DIR = BASE_DIR / "assets" / "pieces"
+
+SELECTED_COLOR = QColor(130, 190, 80, 150)
+LAST_MOVE_COLOR = QColor(255, 235, 59, 90)
+CHECK_COLOR = QColor(220, 60, 60, 110)
+LEGAL_DOT_COLOR = QColor(30, 30, 30, 110)
+LEGAL_RING_COLOR = QColor(30, 30, 30, 140)
+HINT_COLOR = QColor(255, 166, 0, 210)
+HINT_COLORS = (
+    HINT_COLOR,
+    QColor(80, 160, 255, 190),
+    QColor(80, 200, 120, 190),
+)
+
+THEMES = {
+    "经典": (QColor("#f0d9b5"), QColor("#b58863")),
+    "森林": (QColor("#eeeed2"), QColor("#769656")),
+    "蓝灰": (QColor("#dfe6ea"), QColor("#8ca2ad")),
+    "暖木": (QColor("#f3e0c7"), QColor("#a97b50")),
+}
+
+AI_LEVELS = {
+    "入门": (0, 250),
+    "普通": (8, 600),
+    "困难": (20, 1200),
+}
+
+PIECE_LETTERS = {"K": "W", "Q": "Q", "R": "R", "B": "B", "N": "K", "P": "P"}
+
+PROMOTION_CHOICES = {
+    "皇后": "Q",
+    "车": "R",
+    "象": "B",
+    "马": "N",
+}
+
+PIECE_VALUES = {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0}
+ONLINE_CLOCK_SECONDS = 600
+ONLINE_MESSAGE_TYPES = {
+    "move",
+    "new_game",
+    "resign",
+    "timeout",
+    "claim_draw",
+    "draw_offer",
+    "draw_accept",
+    "draw_decline",
+    "undo_request",
+    "undo_accept",
+    "undo_decline",
+    "chat",
+    "pause_request",
+    "pause_accept",
+    "pause_decline",
+    "resume_request",
+    "resume_accept",
+    "rematch_request",
+    "rematch_accept",
+    "rematch_decline",
+}
+
+
+# ---- sound_player.py ----
+
+import math
+import os
+import struct
+import sys
+import tempfile
+import wave
+from pathlib import Path
+
+
+SAMPLE_RATE = 22050
+SOUND_VERSION = 1
+
+SOUND_SPECS = {
+    "move": [(520, 0.05, 0.22, 45), (400, 0.055, 0.16, 50)],
+    "capture": [(210, 0.07, 0.28, 35), (150, 0.10, 0.24, 28)],
+    "check": [(880, 0.06, 0.22, 20), (1100, 0.09, 0.20, 18)],
+    "end": [(523, 0.12, 0.22, 12), (392, 0.20, 0.22, 9)],
+    "chat": [(740, 0.06, 0.16, 24), (988, 0.10, 0.14, 18)],
+}
+
+
+def _write_wav(path: Path, spec: list[tuple[float, float, float, float]]) -> None:
+    frames = bytearray()
+    for frequency, duration, volume, decay in spec:
+        count = int(SAMPLE_RATE * duration)
+        for index in range(count):
+            t = index / SAMPLE_RATE
+            envelope = math.exp(-decay * t)
+            sample = volume * 32767 * envelope * math.sin(
+                2 * math.pi * frequency * t
+            )
+            frames.extend(struct.pack("<h", max(-32768, min(32767, int(sample)))))
+
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(SAMPLE_RATE)
+        wav_file.writeframes(bytes(frames))
+
+
+class SoundPlayer:
+    def __init__(self, enabled: bool = True) -> None:
+        self.enabled = enabled and os.environ.get("CHESS_DISABLE_SOUND") != "1"
+        self._winsound = None
+        self._files: dict[str, str] = {}
+
+        if sys.platform != "win32":
+            return
+        try:
+            import winsound
+        except ImportError:
+            return
+
+        self._winsound = winsound
+        try:
+            self._prepare_sounds()
+        except OSError:
+            self._winsound = None
+
+    def _prepare_sounds(self) -> None:
+        directory = Path(tempfile.gettempdir()) / "chess_pyqt_sounds"
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, spec in SOUND_SPECS.items():
+            path = directory / f"{name}_v{SOUND_VERSION}.wav"
+            if not path.exists() or path.stat().st_size == 0:
+                _write_wav(path, spec)
+            self._files[name] = str(path)
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+
+    def play(self, name: str) -> None:
+        if not self.enabled or self._winsound is None:
+            return
+        path = self._files.get(name)
+        if path is None:
+            return
+        try:
+            self._winsound.PlaySound(
+                path,
+                self._winsound.SND_FILENAME
+                | self._winsound.SND_ASYNC
+                | self._winsound.SND_NODEFAULT,
+            )
+        except RuntimeError:
+            self._winsound = None
+
+
+# ---- chess_engine.py ----
+
+import re
+from dataclasses import dataclass
+from typing import NamedTuple, Optional
+
+
+BOARD_SIZE = 8
+
+KNIGHT_OFFSETS = ((-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1))
+KING_OFFSETS = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
+ORTHOGONAL_DIRECTIONS = ((-1, 0), (1, 0), (0, -1), (0, 1))
+DIAGONAL_DIRECTIONS = ((-1, -1), (-1, 1), (1, -1), (1, 1))
+
+
+@dataclass(frozen=True)
+class Move:
+    from_row: int
+    from_col: int
+    to_row: int
+    to_col: int
+    promotion: Optional[str] = None
+    is_castle: bool = False
+    is_en_passant: bool = False
+
+
+class MoveState(NamedTuple):
+    color: str
+    captured: Optional[str]
+    ep_captured: Optional[str]
+    castling: str
+    ep_target: Optional[tuple[int, int]]
+    halfmove_clock: int
+    fullmove_number: int
+
+
+class ChessGame:
+    START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self.start_fen = self.START_FEN
+        self._load_fen(self.START_FEN)
+        self.history: list[tuple[MoveState, Move]] = []
+        self.san_history: list[str] = []
+
+    def load_fen(self, fen: str) -> None:
+        self._load_fen(fen)
+        self.start_fen = self.to_fen()
+        self.history = []
+        self.san_history = []
+
+    def _load_fen(self, fen: str) -> None:
+        parts = fen.split()
+        if len(parts) != 6:
+            raise ValueError("FEN 必须包含 6 个字段")
+        placement, turn, castling, ep_square, halfmove, fullmove = parts
+        if turn not in ("w", "b"):
+            raise ValueError("FEN 走棋方无效")
+
+        if castling != "-":
+            if (
+                len(set(castling)) != len(castling)
+                or any(char not in "KQkq" for char in castling)
+            ):
+                raise ValueError("FEN 王车易位字段无效")
+
+        ranks = placement.split("/")
+        if len(ranks) != BOARD_SIZE:
+            raise ValueError("FEN 棋盘必须有 8 行")
+
+        board: list[list[Optional[str]]] = [
+            [None] * BOARD_SIZE for _ in range(BOARD_SIZE)
+        ]
+        for row, rank in enumerate(ranks):
+            col = 0
+            for char in rank:
+                if char.isdigit():
+                    col += int(char)
+                elif char in "pnbrqkPNBRQK":
+                    if col >= BOARD_SIZE:
+                        raise ValueError("FEN 某一行超过 8 格")
+                    board[row][col] = char
+                    col += 1
+                else:
+                    raise ValueError(f"FEN 中包含无效字符：{char}")
+            if col != BOARD_SIZE:
+                raise ValueError("FEN 某一行不是 8 格")
+
+        if ep_square == "-":
+            ep_target = None
+        else:
+            if (
+                len(ep_square) != 2
+                or ep_square[0] not in "abcdefgh"
+                or ep_square[1] not in "12345678"
+            ):
+                raise ValueError("FEN 吃过路兵目标格无效")
+            ep_target = (8 - int(ep_square[1]), ord(ep_square[0]) - ord("a"))
+
+        try:
+            halfmove_clock = int(halfmove)
+            fullmove_number = int(fullmove)
+        except ValueError as exc:
+            raise ValueError("FEN 回合数字无效") from exc
+        if halfmove_clock < 0 or fullmove_number < 1:
+            raise ValueError("FEN 回合数字超出范围")
+
+        self.board = board
+        self.turn = turn
+        self.castling = "" if castling == "-" else castling
+        self.ep_target = ep_target
+        self.halfmove_clock = halfmove_clock
+        self.fullmove_number = fullmove_number
+
+        if self.find_king("w") is None or self.find_king("b") is None:
+            raise ValueError("FEN 必须包含双方国王")
+        if self.in_check("w") and self.in_check("b"):
+            raise ValueError("双方国王不能同时被将军")
+        if self.in_check(self.opponent(turn)):
+            raise ValueError("非走棋方不能处于被将军状态")
+
+        self.position_counts: dict[tuple, int] = {self._position_key(): 1}
+
+    @staticmethod
+    def color_of(piece: str) -> str:
+        return "w" if piece.isupper() else "b"
+
+    @staticmethod
+    def opponent(color: str) -> str:
+        return "b" if color == "w" else "w"
+
+    def piece_at(self, row: int, col: int) -> Optional[str]:
+        return self.board[row][col]
+
+    def find_king(self, color: str) -> Optional[tuple[int, int]]:
+        target = "K" if color == "w" else "k"
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                if self.board[row][col] == target:
+                    return row, col
+        return None
+
+    def in_check(self, color: str) -> bool:
+        king = self.find_king(color)
+        if king is None:
+            return False
+        return self.is_square_attacked(king[0], king[1], self.opponent(color))
+
+    def is_square_attacked(self, row: int, col: int, by_color: str) -> bool:
+        board = self.board
+        enemy_pawn = "P" if by_color == "w" else "p"
+        enemy_knight = "N" if by_color == "w" else "n"
+        enemy_king = "K" if by_color == "w" else "k"
+
+        pawn_row = row + 1 if by_color == "w" else row - 1
+        for dc in (-1, 1):
+            pawn_col = col + dc
+            if 0 <= pawn_row < BOARD_SIZE and 0 <= pawn_col < BOARD_SIZE:
+                if board[pawn_row][pawn_col] == enemy_pawn:
+                    return True
+
+        for dr, dc in KNIGHT_OFFSETS:
+            r, c = row + dr, col + dc
+            if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r][c] == enemy_knight:
+                return True
+
+        for dr, dc in KING_OFFSETS:
+            r, c = row + dr, col + dc
+            if 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r][c] == enemy_king:
+                return True
+
+        rook_targets = {"R", "Q"} if by_color == "w" else {"r", "q"}
+        bishop_targets = {"B", "Q"} if by_color == "w" else {"b", "q"}
+
+        for dr, dc in ORTHOGONAL_DIRECTIONS:
+            r, c = row + dr, col + dc
+            while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                piece = board[r][c]
+                if piece is not None:
+                    if piece in rook_targets:
+                        return True
+                    break
+                r += dr
+                c += dc
+
+        for dr, dc in DIAGONAL_DIRECTIONS:
+            r, c = row + dr, col + dc
+            while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE:
+                piece = board[r][c]
+                if piece is not None:
+                    if piece in bishop_targets:
+                        return True
+                    break
+                r += dr
+                c += dc
+
+        return False
+
+    def legal_moves(self, row: int, col: int) -> list[Move]:
+        piece = self.board[row][col]
+        if piece is None or self.color_of(piece) != self.turn:
+            return []
+        return self._legal_moves_for_piece(row, col)
+
+    def all_legal_moves(self, color: Optional[str] = None) -> list[Move]:
+        color = color or self.turn
+        moves: list[Move] = []
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                piece = self.board[row][col]
+                if piece is not None and self.color_of(piece) == color:
+                    moves.extend(self._legal_moves_for_piece(row, col))
+        return moves
+
+    def _legal_moves_for_piece(self, row: int, col: int) -> list[Move]:
+        piece = self.board[row][col]
+        if piece is None:
+            return []
+        color = self.color_of(piece)
+        legal: list[Move] = []
+        for move in self._pseudo_legal_moves(row, col):
+            state = self._apply_move_undoable(move)
+            if state is None:
+                continue
+            try:
+                allowed = not self.in_check(color)
+            finally:
+                self._undo_move_checked(state, move)
+            if allowed:
+                legal.append(move)
+        return legal
+
+    def is_checkmate(self, color: Optional[str] = None) -> bool:
+        color = color or self.turn
+        return self.in_check(color) and not self.all_legal_moves(color)
+
+    def is_stalemate(self, color: Optional[str] = None) -> bool:
+        color = color or self.turn
+        return not self.in_check(color) and not self.all_legal_moves(color)
+
+    def is_fifty_move_draw(self) -> bool:
+        return self.halfmove_clock >= 100
+
+    def is_seventyfive_move_draw(self) -> bool:
+        return self.halfmove_clock >= 150
+
+    def is_threefold_repetition(self) -> bool:
+        return self.position_counts.get(self._position_key(), 0) >= 3
+
+    def is_fivefold_repetition(self) -> bool:
+        return self.position_counts.get(self._position_key(), 0) >= 5
+
+    def is_claimable_draw(self) -> bool:
+        return self.is_fifty_move_draw() or self.is_threefold_repetition()
+
+    def is_automatic_draw(self) -> bool:
+        return (
+            self.is_insufficient_material()
+            or self.is_seventyfive_move_draw()
+            or self.is_fivefold_repetition()
+        )
+
+    def is_insufficient_material(self) -> bool:
+        pieces: list[tuple[int, int, str]] = []
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                piece = self.board[row][col]
+                if piece is not None and piece.upper() != "K":
+                    pieces.append((row, col, piece))
+
+        if not pieces:
+            return True
+        if len(pieces) == 1:
+            return pieces[0][2].upper() in ("B", "N")
+        if len(pieces) == 2:
+            first_row, first_col, first = pieces[0]
+            second_row, second_col, second = pieces[1]
+            if first.upper() != "B" or second.upper() != "B":
+                return False
+            if first.islower() == second.islower():
+                return False
+            return (first_row + first_col) % 2 == (second_row + second_col) % 2
+        return False
+
+    def captured_pieces(self) -> tuple[list[str], list[str]]:
+        captured_by_white: list[str] = []
+        captured_by_black: list[str] = []
+        for state, move in self.history:
+            piece = state.ep_captured if move.is_en_passant else state.captured
+            if piece is None:
+                continue
+            if piece.islower():
+                captured_by_white.append(piece)
+            else:
+                captured_by_black.append(piece)
+        return captured_by_white, captured_by_black
+
+    @staticmethod
+    def _normalize_san(san: str) -> str:
+        text = san.strip()
+        text = text.replace("0-0-0", "O-O-O").replace("0-0", "O-O")
+        text = re.sub(r"e\.p\.", "", text, flags=re.IGNORECASE)
+        text = text.replace("=", "")
+        text = re.sub(r"[!?]+$", "", text)
+        text = text.rstrip("+#")
+        return text
+
+    def find_move_by_san(self, san: str) -> Optional[Move]:
+        target = self._normalize_san(san)
+        if not target:
+            return None
+        for move in self.all_legal_moves():
+            if self._normalize_san(self.san_for_move(move)) == target:
+                return move
+        return None
+
+    def make_move(self, move: Move) -> None:
+        piece = self.board[move.from_row][move.from_col]
+        if piece is None:
+            return
+        san = self._san_base(move)
+        state = self._apply_move_undoable(move)
+        if state is None:
+            return
+        opponent = self.turn
+        if self.in_check(opponent):
+            san += "#" if self.is_checkmate(opponent) else "+"
+        self.san_history.append(san)
+        self.history.append((state, move))
+        key = self._position_key()
+        self.position_counts[key] = self.position_counts.get(key, 0) + 1
+
+    def undo_move(self) -> Optional[Move]:
+        if not self.history:
+            return None
+        current_key = self._position_key()
+        count = self.position_counts.get(current_key, 0) - 1
+        if count > 0:
+            self.position_counts[current_key] = count
+        else:
+            self.position_counts.pop(current_key, None)
+
+        state, move = self.history.pop()
+        if self.san_history:
+            self.san_history.pop()
+        self._undo_move_checked(state, move)
+        return move
+
+    @property
+    def last_move(self) -> Optional[Move]:
+        return self.history[-1][1] if self.history else None
+
+    def to_fen(self) -> str:
+        ranks: list[str] = []
+        for row in range(BOARD_SIZE):
+            empty = 0
+            rank = ""
+            for col in range(BOARD_SIZE):
+                piece = self.board[row][col]
+                if piece is None:
+                    empty += 1
+                else:
+                    if empty:
+                        rank += str(empty)
+                        empty = 0
+                    rank += piece
+            if empty:
+                rank += str(empty)
+            ranks.append(rank)
+
+        placement = "/".join(ranks)
+        castling = self.castling or "-"
+        if self.ep_target is None:
+            ep_square = "-"
+        else:
+            ep_square = f"{chr(ord('a') + self.ep_target[1])}{8 - self.ep_target[0]}"
+        return (
+            f"{placement} {self.turn} {castling} {ep_square} "
+            f"{self.halfmove_clock} {self.fullmove_number}"
+        )
+
+    def _position_key(self) -> tuple:
+        return (
+            tuple(tuple(row) for row in self.board),
+            self.turn,
+            self.castling,
+            self._effective_ep_target(),
+        )
+
+    def _effective_ep_target(self) -> Optional[tuple[int, int]]:
+        if self.ep_target is None:
+            return None
+
+        target_row, target_col = self.ep_target
+        pawn_row = target_row + (1 if self.turn == "w" else -1)
+        if not 0 <= pawn_row < BOARD_SIZE:
+            return None
+
+        pawn = "P" if self.turn == "w" else "p"
+        for pawn_col in (target_col - 1, target_col + 1):
+            if not 0 <= pawn_col < BOARD_SIZE:
+                continue
+            if self.board[pawn_row][pawn_col] != pawn:
+                continue
+            if any(
+                move.is_en_passant
+                for move in self._legal_moves_for_piece(pawn_row, pawn_col)
+            ):
+                return self.ep_target
+        return None
+
+    @staticmethod
+    def move_to_uci(move: Move) -> str:
+        uci = (
+            f"{chr(ord('a') + move.from_col)}{8 - move.from_row}"
+            f"{chr(ord('a') + move.to_col)}{8 - move.to_row}"
+        )
+        if move.promotion:
+            uci += move.promotion.lower()
+        return uci
+
+    def find_move_by_uci(self, uci: str) -> Optional[Move]:
+        uci = uci.strip().lower()
+        moves = self.all_legal_moves()
+        for move in moves:
+            if self.move_to_uci(move) == uci:
+                return move
+        if len(uci) == 4:
+            promotions = [
+                move for move in moves if self.move_to_uci(move)[:4] == uci
+            ]
+            if promotions:
+                for move in promotions:
+                    if move.promotion == "Q":
+                        return move
+                return promotions[0]
+        return None
+
+    def san_for_move(self, move: Move) -> str:
+        piece = self.board[move.from_row][move.from_col]
+        if piece is None:
+            return ""
+        san = self._san_base(move)
+        state = self._apply_move_undoable(move)
+        if state is None:
+            return san
+        try:
+            opponent = self.turn
+            if self.in_check(opponent):
+                san += "#" if self.is_checkmate(opponent) else "+"
+        finally:
+            self._undo_move_checked(state, move)
+        return san
+
+    def result_tag(self) -> str:
+        if self.is_checkmate():
+            return "1-0" if self.turn == "b" else "0-1"
+        if self.is_stalemate():
+            return "1/2-1/2"
+        if self.is_automatic_draw():
+            return "1/2-1/2"
+        return ""
+
+    def _san_base(self, move: Move) -> str:
+        piece = self.board[move.from_row][move.from_col]
+        if piece is None:
+            return ""
+        piece_type = piece.upper()
+        destination = f"{chr(ord('a') + move.to_col)}{8 - move.to_row}"
+        is_capture = (
+            self.board[move.to_row][move.to_col] is not None or move.is_en_passant
+        )
+
+        if move.is_castle:
+            return "O-O" if move.to_col > move.from_col else "O-O-O"
+
+        if piece_type == "P":
+            if is_capture:
+                san = f"{chr(ord('a') + move.from_col)}x{destination}"
+            else:
+                san = destination
+            if move.promotion:
+                san += f"={move.promotion.upper()}"
+            return san
+
+        disambiguation = ""
+        if piece_type != "K":
+            color = self.color_of(piece)
+            ambiguous: list[tuple[int, int]] = []
+            for row in range(BOARD_SIZE):
+                for col in range(BOARD_SIZE):
+                    if (row, col) == (move.from_row, move.from_col):
+                        continue
+                    other = self.board[row][col]
+                    if (
+                        other is None
+                        or other.upper() != piece_type
+                        or self.color_of(other) != color
+                    ):
+                        continue
+                    destinations = {
+                        (candidate.to_row, candidate.to_col)
+                        for candidate in self._legal_moves_for_piece(row, col)
+                    }
+                    if (move.to_row, move.to_col) in destinations:
+                        ambiguous.append((row, col))
+            if ambiguous:
+                same_file = any(col == move.from_col for _, col in ambiguous)
+                same_rank = any(row == move.from_row for row, _ in ambiguous)
+                if not same_file:
+                    disambiguation = chr(ord("a") + move.from_col)
+                elif not same_rank:
+                    disambiguation = str(8 - move.from_row)
+                else:
+                    disambiguation = (
+                        f"{chr(ord('a') + move.from_col)}{8 - move.from_row}"
+                    )
+
+        capture_mark = "x" if is_capture else ""
+        return f"{piece_type}{disambiguation}{capture_mark}{destination}"
+
+    def _apply_move_undoable(self, move: Move) -> Optional[MoveState]:
+        board = self.board
+        piece = board[move.from_row][move.from_col]
+        if piece is None:
+            return None
+
+        color = self.color_of(piece)
+        piece_type = piece.upper()
+        target_piece = board[move.to_row][move.to_col]
+        captured = target_piece
+        ep_captured: Optional[str] = None
+        old_castling = self.castling
+        old_ep_target = self.ep_target
+        old_halfmove = self.halfmove_clock
+        old_fullmove = self.fullmove_number
+
+        board[move.from_row][move.from_col] = None
+        board[move.to_row][move.to_col] = piece
+
+        if move.is_en_passant:
+            ep_captured = board[move.from_row][move.to_col]
+            captured = ep_captured
+            board[move.from_row][move.to_col] = None
+
+        if move.is_castle:
+            row = move.from_row
+            rook_from_col, rook_to_col = (7, 5) if move.to_col > move.from_col else (0, 3)
+            board[row][rook_to_col] = board[row][rook_from_col]
+            board[row][rook_from_col] = None
+
+        if piece_type == "P" and move.to_row in (0, BOARD_SIZE - 1):
+            promotion = (move.promotion or "Q").upper()
+            board[move.to_row][move.to_col] = promotion if color == "w" else promotion.lower()
+
+        rights = set(self.castling)
+        if piece_type == "K":
+            rights -= {"K", "Q"} if color == "w" else {"k", "q"}
+        elif piece_type == "R":
+            self._remove_rook_right(rights, move.from_row, move.from_col)
+        if captured is not None and captured.upper() == "R":
+            self._remove_rook_right(rights, move.to_row, move.to_col)
+        self.castling = "".join(char for char in "KQkq" if char in rights)
+
+        if piece_type == "P" and abs(move.to_row - move.from_row) == 2:
+            self.ep_target = ((move.from_row + move.to_row) // 2, move.from_col)
+        else:
+            self.ep_target = None
+
+        if piece_type == "P" or captured is not None:
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock += 1
+
+        if color == "b":
+            self.fullmove_number += 1
+        self.turn = self.opponent(color)
+        return MoveState(
+            color=color,
+            captured=target_piece,
+            ep_captured=ep_captured,
+            castling=old_castling,
+            ep_target=old_ep_target,
+            halfmove_clock=old_halfmove,
+            fullmove_number=old_fullmove,
+        )
+
+    def _undo_move_checked(self, state: MoveState, move: Move) -> None:
+        board = self.board
+        piece = board[move.to_row][move.to_col]
+        if move.promotion:
+            piece = "P" if state.color == "w" else "p"
+        board[move.from_row][move.from_col] = piece
+        if move.is_en_passant:
+            board[move.to_row][move.to_col] = None
+            board[move.from_row][move.to_col] = state.ep_captured
+        else:
+            board[move.to_row][move.to_col] = state.captured
+        if move.is_castle:
+            row = move.from_row
+            rook_from_col, rook_to_col = (7, 5) if move.to_col > move.from_col else (0, 3)
+            board[row][rook_from_col] = board[row][rook_to_col]
+            board[row][rook_to_col] = None
+        self.castling = state.castling
+        self.ep_target = state.ep_target
+        self.halfmove_clock = state.halfmove_clock
+        self.fullmove_number = state.fullmove_number
+        self.turn = state.color
+
+    @staticmethod
+    def _remove_rook_right(rights: set[str], row: int, col: int) -> None:
+        if (row, col) == (7, 0):
+            rights.discard("Q")
+        elif (row, col) == (7, 7):
+            rights.discard("K")
+        elif (row, col) == (0, 0):
+            rights.discard("q")
+        elif (row, col) == (0, 7):
+            rights.discard("k")
+
+    def _pseudo_legal_moves(self, row: int, col: int) -> list[Move]:
+        board = self.board
+        piece = board[row][col]
+        if piece is None:
+            return []
+
+        color = self.color_of(piece)
+        piece_type = piece.upper()
+        moves: list[Move] = []
+
+        def inside(r: int, c: int) -> bool:
+            return 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE
+
+        def add_target(r: int, c: int, **kwargs) -> bool:
+            if not inside(r, c):
+                return True
+            target = board[r][c]
+            if target is not None and self.color_of(target) == color:
+                return True
+            moves.append(Move(row, col, r, c, **kwargs))
+            return target is None
+
+        def add_pawn_target(r: int, c: int, **kwargs) -> None:
+            if r in (0, BOARD_SIZE - 1):
+                for promotion in ("Q", "R", "B", "N"):
+                    moves.append(Move(row, col, r, c, promotion=promotion, **kwargs))
+            else:
+                moves.append(Move(row, col, r, c, **kwargs))
+
+        if piece_type == "P":
+            direction = -1 if color == "w" else 1
+            start_row = 6 if color == "w" else 1
+            next_row = row + direction
+
+            if inside(next_row, col) and board[next_row][col] is None:
+                add_pawn_target(next_row, col)
+                double_row = row + 2 * direction
+                if row == start_row and board[double_row][col] is None:
+                    moves.append(Move(row, col, double_row, col))
+
+            for dc in (-1, 1):
+                next_col = col + dc
+                if not inside(next_row, next_col):
+                    continue
+                target = board[next_row][next_col]
+                if target is not None and self.color_of(target) != color:
+                    add_pawn_target(next_row, next_col)
+                elif target is None and self.ep_target == (next_row, next_col):
+                    moves.append(
+                        Move(row, col, next_row, next_col, is_en_passant=True)
+                    )
+
+        elif piece_type == "N":
+            for dr, dc in KNIGHT_OFFSETS:
+                add_target(row + dr, col + dc)
+
+        elif piece_type in ("B", "R", "Q"):
+            directions = []
+            if piece_type in ("B", "Q"):
+                directions.extend(DIAGONAL_DIRECTIONS)
+            if piece_type in ("R", "Q"):
+                directions.extend(ORTHOGONAL_DIRECTIONS)
+            for dr, dc in directions:
+                r, c = row + dr, col + dc
+                while inside(r, c):
+                    target = board[r][c]
+                    if target is None:
+                        moves.append(Move(row, col, r, c))
+                    else:
+                        if self.color_of(target) != color:
+                            moves.append(Move(row, col, r, c))
+                        break
+                    r += dr
+                    c += dc
+
+        elif piece_type == "K":
+            for dr, dc in KING_OFFSETS:
+                add_target(row + dr, col + dc)
+
+            enemy = self.opponent(color)
+            if color == "w" and (row, col) == (7, 4):
+                if (
+                    "K" in self.castling
+                    and board[7][5] is None
+                    and board[7][6] is None
+                    and board[7][7] == "R"
+                    and not any(
+                        self.is_square_attacked(7, c, enemy) for c in (4, 5, 6)
+                    )
+                ):
+                    moves.append(Move(7, 4, 7, 6, is_castle=True))
+                if (
+                    "Q" in self.castling
+                    and board[7][1] is None
+                    and board[7][2] is None
+                    and board[7][3] is None
+                    and board[7][0] == "R"
+                    and not any(
+                        self.is_square_attacked(7, c, enemy) for c in (4, 3, 2)
+                    )
+                ):
+                    moves.append(Move(7, 4, 7, 2, is_castle=True))
+            elif color == "b" and (row, col) == (0, 4):
+                if (
+                    "k" in self.castling
+                    and board[0][5] is None
+                    and board[0][6] is None
+                    and board[0][7] == "r"
+                    and not any(
+                        self.is_square_attacked(0, c, enemy) for c in (4, 5, 6)
+                    )
+                ):
+                    moves.append(Move(0, 4, 0, 6, is_castle=True))
+                if (
+                    "q" in self.castling
+                    and board[0][1] is None
+                    and board[0][2] is None
+                    and board[0][3] is None
+                    and board[0][0] == "r"
+                    and not any(
+                        self.is_square_attacked(0, c, enemy) for c in (4, 3, 2)
+                    )
+                ):
+                    moves.append(Move(0, 4, 0, 2, is_castle=True))
+
+        return moves
+
+
+# ---- game_tree.py ----
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+
+@dataclass
+class GameNode:
+    node_id: int = 0
+    move: Optional[Move] = None
+    san: str = ""
+    color: str = ""
+    ply: int = 0
+    comment: str = ""
+    nags: list[int] = field(default_factory=list)
+    parent: Optional["GameNode"] = None
+    children: list["GameNode"] = field(default_factory=list)
+
+    @property
+    def is_root(self) -> bool:
+        return self.move is None
+
+
+class GameTree:
+    def __init__(self, start_fen: str = ChessGame.START_FEN) -> None:
+        checker = ChessGame()
+        if start_fen and start_fen != ChessGame.START_FEN:
+            checker.load_fen(start_fen)
+            self.start_fen = checker.to_fen()
+        else:
+            self.start_fen = ChessGame.START_FEN
+        fields = self.start_fen.split()
+        self._start_turn = fields[1] if len(fields) > 1 else "w"
+        try:
+            self._start_fullmove = int(fields[5]) if len(fields) > 5 else 1
+        except ValueError:
+            self._start_fullmove = 1
+        self.headers: dict[str, str] = {}
+        self.result = ""
+        self._next_id = 1
+        self.root = self._make_node()
+        self.current = self.root
+        self._nodes: dict[int, GameNode] = {self.root.node_id: self.root}
+
+    def _make_node(
+        self,
+        parent: Optional[GameNode] = None,
+        move: Optional[Move] = None,
+        san: str = "",
+        color: str = "",
+        ply: int = 0,
+        comment: str = "",
+        nags: Optional[list[int]] = None,
+    ) -> GameNode:
+        node = GameNode(
+            node_id=self._next_id,
+            move=move,
+            san=san,
+            color=color,
+            ply=ply,
+            comment=comment,
+            nags=list(nags or []),
+            parent=parent,
+        )
+        self._next_id += 1
+        if not hasattr(self, "_nodes"):
+            return node
+        self._nodes[node.node_id] = node
+        return node
+
+    def _append(
+        self,
+        parent: GameNode,
+        move: Move,
+        san: str,
+        color: str,
+        make_mainline: bool,
+        comment: str = "",
+        nags: Optional[list[int]] = None,
+    ) -> GameNode:
+        node = self._make_node(
+            parent=parent,
+            move=move,
+            san=san,
+            color=color,
+            ply=parent.ply + 1,
+            comment=comment,
+            nags=nags,
+        )
+        if make_mainline and parent.children:
+            parent.children.insert(0, node)
+        else:
+            parent.children.append(node)
+        return node
+
+    def add_move(
+        self,
+        move: Move,
+        san: str,
+        color: str,
+        make_mainline: bool = True,
+        comment: str = "",
+        nags: Optional[list[int]] = None,
+    ) -> GameNode:
+        node = self._append(
+            self.current,
+            move,
+            san,
+            color,
+            make_mainline,
+            comment,
+            nags,
+        )
+        self.current = node
+        return node
+
+    def append_move(
+        self,
+        parent: GameNode,
+        move: Move,
+        san: str,
+        color: str,
+        comment: str = "",
+        nags: Optional[list[int]] = None,
+    ) -> GameNode:
+        return self._append(
+            parent, move, san, color, False, comment, nags
+        )
+
+    def path_to(self, node: Optional[GameNode] = None) -> list[GameNode]:
+        node = node or self.current
+        path: list[GameNode] = []
+        while node is not None and node.parent is not None:
+            path.append(node)
+            node = node.parent
+        path.reverse()
+        return path
+
+    def path_indices(self, node: Optional[GameNode] = None) -> list[int]:
+        node = node or self.current
+        indices: list[int] = []
+        while node is not None and node.parent is not None:
+            parent = node.parent
+            try:
+                indices.append(parent.children.index(node))
+            except ValueError:
+                break
+            node = parent
+        indices.reverse()
+        return indices
+
+    def build_game(self, node: Optional[GameNode] = None) -> ChessGame:
+        node = node or self.current
+        game = ChessGame()
+        if self.start_fen != ChessGame.START_FEN:
+            game.load_fen(self.start_fen)
+        for item in self.path_to(node):
+            if item.move is not None:
+                game.make_move(item.move)
+        return game
+
+    def mainline(self) -> list[GameNode]:
+        nodes: list[GameNode] = []
+        node = self.root
+        while node.children:
+            node = node.children[0]
+            nodes.append(node)
+        return nodes
+
+    def latest_node(self) -> GameNode:
+        node = self.root
+        while node.children:
+            node = node.children[0]
+        return node
+
+    def tip_from(self, node: Optional[GameNode] = None) -> GameNode:
+        node = node or self.current
+        while node.children:
+            node = node.children[0]
+        return node
+
+    def is_reviewing(self) -> bool:
+        return bool(self.current.children)
+
+    def node_by_id(self, node_id: int) -> Optional[GameNode]:
+        return self._nodes.get(node_id)
+
+    def truncate_after(self, node: GameNode) -> None:
+        pending = list(node.children)
+        while pending:
+            child = pending.pop()
+            self._nodes.pop(child.node_id, None)
+            pending.extend(child.children)
+        node.children.clear()
+        self.current = node
+
+    def move_number(self, node: GameNode) -> int:
+        before = max(0, node.ply - 1)
+        return self._start_fullmove + (
+            before + (1 if self._start_turn == "b" else 0)
+        ) // 2
+
+    def to_dict(self) -> dict:
+        def encode_node(node: GameNode) -> dict:
+            return {
+                "move": (
+                    ChessGame.move_to_uci(node.move)
+                    if node.move is not None
+                    else ""
+                ),
+                "comment": node.comment,
+                "nags": list(node.nags),
+                "children": [],
+            }
+
+        root_data = encode_node(self.root)
+        pending: list[tuple[GameNode, dict]] = [(self.root, root_data)]
+        while pending:
+            node, payload = pending.pop()
+            for child in node.children:
+                child_data = encode_node(child)
+                payload["children"].append(child_data)
+                pending.append((child, child_data))
+
+        return {
+            "start_fen": self.start_fen,
+            "headers": dict(self.headers),
+            "result": self.result,
+            "root": root_data,
+            "current": self.path_indices(self.current),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "GameTree":
+        if not isinstance(data, dict):
+            raise ValueError("棋谱树数据无效")
+        start_fen = data.get("start_fen")
+        if not isinstance(start_fen, str) or not start_fen.strip():
+            start_fen = ChessGame.START_FEN
+        tree = cls(start_fen)
+        root_data = data.get("root")
+        if not isinstance(root_data, dict):
+            raise ValueError("棋谱树根节点无效")
+
+        game = tree.build_game(tree.root)
+        pending: list[tuple[GameNode, dict, ChessGame, int, list]] = [
+            (tree.root, root_data, game, 0, [])
+        ]
+        while pending:
+            parent, payload, current_game, index, children = pending[-1]
+            if index == 0:
+                raw_children = payload.get("children", [])
+                if not isinstance(raw_children, list):
+                    raise ValueError("棋谱树子节点无效")
+                children = raw_children
+                pending[-1] = (
+                    parent,
+                    payload,
+                    current_game,
+                    index,
+                    children,
+                )
+            if index >= len(children):
+                pending.pop()
+                if pending:
+                    pending[-1][2].undo_move()
+                continue
+            child = children[index]
+            pending[-1] = (
+                parent,
+                payload,
+                current_game,
+                index + 1,
+                children,
+            )
+            if not isinstance(child, dict):
+                raise ValueError("棋谱树节点无效")
+            uci = str(child.get("move") or "")
+            move = current_game.find_move_by_uci(uci) if uci else None
+            if move is None:
+                raise ValueError(f"无法恢复着法：{uci}")
+            nags: list[int] = []
+            raw_nags = child.get("nags", [])
+            if isinstance(raw_nags, list):
+                for value in raw_nags:
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        nags.append(value)
+            turn = current_game.turn
+            current_game.make_move(move)
+            node = tree.append_move(
+                parent,
+                move,
+                current_game.san_history[-1],
+                turn,
+                comment=str(child.get("comment") or ""),
+                nags=nags,
+            )
+            pending.append((node, child, current_game, 0, []))
+
+        headers = data.get("headers")
+        if isinstance(headers, dict):
+            tree.headers = {
+                str(key): str(value) for key, value in headers.items()
+            }
+        tree.result = str(data.get("result") or "")
+
+        indices = data.get("current")
+        node = tree.root
+        if isinstance(indices, list):
+            for index in indices:
+                if not isinstance(index, int) or not (0 <= index < len(node.children)):
+                    node = tree.root
+                    break
+                node = node.children[index]
+        tree.current = node
+        return tree
+
+
+# ---- pgn_import.py ----
+
+import re
+
+
+
+RESULT_TOKENS = {"1-0", "0-1", "1/2-1/2", "*"}
+TAG_RE = re.compile(
+    r'\[\s*([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\s*\]'
+)
+TOKEN_RE = re.compile(r"\{[^}]*\}|;[^\n\r]*|%[^\n\r]*|\(|\)|\$\d+|[^\s(){};%]+")
+SUFFIX_NAGS = {
+    "!!": 3,
+    "??": 4,
+    "!?": 5,
+    "?!": 6,
+    "!": 1,
+    "?": 2,
+}
+
+
+class PGNImportError(Exception):
+    pass
+
+
+def _unescape_tag(value: str) -> str:
+    return re.sub(r'\\(["\\])', r"\1", value)
+
+
+def _strip_variations(text: str) -> str:
+    result: list[str] = []
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth:
+                depth -= 1
+        elif depth == 0:
+            result.append(char)
+    return "".join(result)
+
+
+def parse_pgn(pgn_text: str) -> GameTree:
+    text = pgn_text.lstrip("\ufeff")
+    headers: dict[str, str] = {}
+    for match in TAG_RE.finditer(text):
+        headers[match.group(1)] = _unescape_tag(match.group(2))
+
+    movetext = TAG_RE.sub(" ", text)
+    start_fen = headers.get("FEN") or headers.get("fen")
+    try:
+        tree = GameTree(start_fen or ChessGame.START_FEN)
+    except (ValueError, IndexError) as exc:
+        raise PGNImportError(f"PGN 中的 FEN 无效：{exc}") from exc
+    tree.headers = headers
+
+    current: GameNode = tree.root
+    game = tree.build_game(current)
+    stack: list[tuple[GameNode, ChessGame]] = []
+    result = ""
+    move_count = 0
+
+    for raw in TOKEN_RE.findall(movetext):
+        token = raw.strip()
+        if not token:
+            continue
+        if token == "(":
+            stack.append((current, game))
+            current = current.parent or tree.root
+            game = tree.build_game(current)
+            continue
+        if token == ")":
+            if not stack:
+                raise PGNImportError("PGN 变例括号不匹配")
+            current, game = stack.pop()
+            continue
+        if token.startswith("$"):
+            try:
+                nag = int(token[1:])
+            except ValueError:
+                continue
+            if not current.is_root:
+                current.nags.append(nag)
+            continue
+        if token.startswith("{") and token.endswith("}"):
+            comment = token[1:-1].strip()
+            if comment:
+                if current.comment:
+                    current.comment += " " + comment
+                else:
+                    current.comment = comment
+            continue
+        if token.startswith(";") or token.startswith("%"):
+            comment = token[1:].strip()
+            if comment:
+                if current.comment:
+                    current.comment += " " + comment
+                else:
+                    current.comment = comment
+            continue
+        if token in RESULT_TOKENS:
+            result = token
+            break
+
+        token = re.sub(r"^\d+\.+", "", token)
+        if not token or token == ".":
+            continue
+
+        suffix = ""
+        for marker in ("!!", "??", "!?", "?!", "!", "?"):
+            if token.endswith(marker):
+                suffix = marker
+                token = token[: -len(marker)]
+                break
+        token = token.strip()
+        if not token or token.lower() in ("e.p.", "ep"):
+            continue
+        if token in RESULT_TOKENS:
+            result = token
+            break
+
+        move = game.find_move_by_san(token)
+        if move is None:
+            raise PGNImportError(
+                f"第 {move_count + 1} 着无法识别或非法：{token}"
+            )
+        turn = game.turn
+        game.make_move(move)
+        node = tree.append_move(
+            current,
+            move,
+            game.san_history[-1],
+            turn,
+        )
+        if suffix:
+            node.nags.append(SUFFIX_NAGS[suffix])
+        current = node
+        move_count += 1
+        if move_count > 20000:
+            raise PGNImportError("PGN 着法过多")
+
+    if stack:
+        raise PGNImportError("PGN 变例括号不匹配")
+
+    tree.result = result or headers.get("Result", "*") or "*"
+    return tree
+
+
+def extract_moves(pgn_text: str) -> list[str]:
+    if re.search(r'\[\s*(SetUp|FEN)\s+"', pgn_text, re.IGNORECASE):
+        raise PGNImportError("暂不支持包含 FEN/SetUp 标签的 PGN 文件")
+
+    text = re.sub(r"^\s*\[[^\n]*\]\s*$", " ", pgn_text, flags=re.MULTILINE)
+    text = re.sub(r"\{[^}]*\}", " ", text, flags=re.DOTALL)
+    text = re.sub(r";[^\n]*", " ", text)
+    text = re.sub(r"%[^\n]*", " ", text)
+    text = re.sub(r"\$\d+", " ", text)
+    text = _strip_variations(text)
+
+    moves: list[str] = []
+    for raw_token in text.split():
+        token = raw_token.lstrip("\ufeff")
+        if token in RESULT_TOKENS:
+            break
+
+        token = re.sub(r"^\d+\.+", "", token)
+        if not token or token in {".", "..", "..."}:
+            continue
+
+        token = token.replace("0-0-0", "O-O-O").replace("0-0", "O-O")
+        token = re.sub(r"e\.p\.", "", token, flags=re.IGNORECASE)
+        token = re.sub(r"[!?]+$", "", token)
+        if not token:
+            continue
+        if token in RESULT_TOKENS:
+            break
+        if token.startswith("[") or token.startswith("]"):
+            continue
+        moves.append(token)
+
+    return moves
+
+
+# ---- pgn_export.py ----
+
+import datetime
+from typing import Optional
+
+
+
+def _escape_header(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _wrap_tokens(tokens: list[str], width: int = 80) -> list[str]:
+    lines: list[str] = []
+    current = ""
+    for token in tokens:
+        if current and len(current) + 1 + len(token) > width:
+            lines.append(current)
+            current = token
+        else:
+            current = token if not current else f"{current} {token}"
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _move_token(tree: GameTree, node: GameNode, force_number: bool) -> str:
+    number = tree.move_number(node)
+    if node.color == "w":
+        prefix = f"{number}. "
+    elif force_number:
+        prefix = f"{number}... "
+    else:
+        prefix = ""
+    text = f"{prefix}{node.san}"
+    for nag in node.nags:
+        text += f" ${nag}"
+    if node.comment:
+        comment = node.comment.replace("}", "]").replace("{", "[")
+        text += f" {{{comment}}}"
+    return text
+
+
+def _render_move(
+    tree: GameTree, node: GameNode, force_number: bool
+) -> list[str]:
+    tokens = [_move_token(tree, node, force_number)]
+    tokens.extend(_render_children(tree, node, False))
+    return tokens
+
+
+def _render_children(
+    tree: GameTree, parent: GameNode, force_first: bool
+) -> list[str]:
+    if not parent.children:
+        return []
+    tokens: list[str] = []
+    main = parent.children[0]
+    tokens.append(_move_token(tree, main, force_first))
+    for variation in parent.children[1:]:
+        tokens.append("(")
+        tokens.extend(_render_move(tree, variation, True))
+        tokens.append(")")
+    tokens.extend(_render_children(tree, main, False))
+    return tokens
+
+
+def build_pgn_tree(
+    tree: GameTree,
+    result: str = "",
+    white: str = "Player",
+    black: str = "Player 2",
+    date: Optional[datetime.date] = None,
+    event: str = "Casual Game",
+    site: str = "Local",
+    extra_headers: Optional[dict[str, str]] = None,
+) -> str:
+    result_tag = result or tree.result or "*"
+    date_text = (date or datetime.date.today()).strftime("%Y.%m.%d")
+
+    merged: dict[str, str] = dict(tree.headers)
+    merged.setdefault("Event", event)
+    merged.setdefault("Site", site)
+    merged.setdefault("Date", date_text)
+    merged.setdefault("Round", "-")
+    merged["White"] = white
+    merged["Black"] = black
+    merged["Result"] = result_tag
+    if extra_headers:
+        merged.update(extra_headers)
+
+    if tree.start_fen != ChessGame.START_FEN:
+        merged["SetUp"] = "1"
+        merged["FEN"] = tree.start_fen
+    else:
+        merged.pop("SetUp", None)
+        merged.pop("FEN", None)
+
+    order = [
+        "Event",
+        "Site",
+        "Date",
+        "Round",
+        "White",
+        "Black",
+        "Result",
+        "SetUp",
+        "FEN",
+    ]
+    lines: list[str] = []
+    for key in order:
+        value = merged.pop(key, None)
+        if value is not None:
+            lines.append(f'[{key} "{_escape_header(str(value))}"]')
+    for key in sorted(merged):
+        lines.append(f'[{key} "{_escape_header(str(merged[key]))}"]')
+    lines.append("")
+
+    tokens = _render_children(tree, tree.root, True)
+    tokens.append(result_tag)
+    lines.extend(_wrap_tokens(tokens))
+    return "\n".join(lines) + "\n"
+
+
+def build_pgn(
+    san_history: list[str],
+    result: str = "",
+    white: str = "Player",
+    black: str = "Player 2",
+    date: Optional[datetime.date] = None,
+    event: str = "Casual Game",
+    site: str = "Local",
+) -> str:
+    result_tag = result or "*"
+    date_text = (date or datetime.date.today()).strftime("%Y.%m.%d")
+
+    headers = [
+        ("Event", event),
+        ("Site", site),
+        ("Date", date_text),
+        ("Round", "-"),
+        ("White", white),
+        ("Black", black),
+        ("Result", result_tag),
+    ]
+    lines = [
+        f'[{key} "{_escape_header(str(value))}"]' for key, value in headers
+    ]
+    lines.append("")
+
+    tokens: list[str] = []
+    for index in range(0, len(san_history), 2):
+        number = index // 2 + 1
+        tokens.append(f"{number}. {san_history[index]}")
+        if index + 1 < len(san_history):
+            tokens.append(san_history[index + 1])
+    tokens.append(result_tag)
+
+    lines.extend(_wrap_tokens(tokens))
+    return "\n".join(lines) + "\n"
+
+
+# ---- session_store.py ----
+
+import json
+import os
+from pathlib import Path
+from typing import Optional
+
+from PyQt6.QtCore import QStandardPaths
+
+
+STATE_VERSION = 1
+
+
+def state_path() -> Path:
+    base = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.AppDataLocation
+    )
+    directory = Path(base) if base else Path.home() / ".chess"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / "saved_game.json"
+
+
+def load_state() -> Optional[dict]:
+    path = state_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("version") != STATE_VERSION:
+        return None
+    return data
+
+
+def save_state(data: dict) -> bool:
+    path = state_path()
+    temporary = path.with_suffix(".tmp")
+    payload = {"version": STATE_VERSION, **data}
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temporary, path)
+    except OSError:
+        return False
+    return True
+
+
+def clear_state() -> None:
+    path = state_path()
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+# ---- chess_clock.py ----
+
+import math
+import time
+from typing import Optional
+
+from PyQt6.QtCore import QObject, QTimer, pyqtSignal
+
+
+class ChessClock(QObject):
+    updated = pyqtSignal()
+    flag = pyqtSignal(str)
+
+    def __init__(
+        self,
+        base_seconds: int = 600,
+        increment: int = 0,
+        parent: Optional[QObject] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.base_seconds = base_seconds
+        self.increment = increment
+        self.remaining = {"w": float(base_seconds), "b": float(base_seconds)}
+        self.active: Optional[str] = None
+        self._last = 0.0
+        self._flagged = False
+        self.timer = QTimer(self)
+        self.timer.setInterval(200)
+        self.timer.timeout.connect(self._tick)
+
+    def reset(
+        self, base_seconds: Optional[int] = None, increment: Optional[int] = None
+    ) -> None:
+        self.timer.stop()
+        if base_seconds is not None:
+            self.base_seconds = max(1, int(base_seconds))
+        if increment is not None:
+            self.increment = max(0, int(increment))
+        self.remaining = {
+            "w": float(self.base_seconds),
+            "b": float(self.base_seconds),
+        }
+        self.active = None
+        self._flagged = False
+        self.updated.emit()
+
+    def start(self, color: str) -> None:
+        self.active = color
+        self._last = time.monotonic()
+        self._flagged = False
+        self.timer.start()
+        self.updated.emit()
+
+    def set_turn(self, color: str) -> None:
+        if self.active is None:
+            self.start(color)
+            return
+        if color == self.active:
+            return
+        now = time.monotonic()
+        self._consume(now)
+        if self._flagged:
+            return
+        self.active = color
+        self._last = now
+        self.updated.emit()
+
+    def complete_move(self, next_color: str) -> None:
+        if self.active is None:
+            self.start(next_color)
+            return
+        now = time.monotonic()
+        mover = self.active
+        self._consume(now)
+        if self._flagged:
+            return
+        if self.increment:
+            self.remaining[mover] += self.increment
+        self.active = next_color
+        self._last = now
+        self.updated.emit()
+
+    def set_time_control(
+        self, base_seconds: int, increment: int
+    ) -> None:
+        self.base_seconds = max(60, int(base_seconds))
+        self.increment = max(0, int(increment))
+        self.remaining = {
+            "w": float(self.base_seconds),
+            "b": float(self.base_seconds),
+        }
+        self._flagged = False
+        self.updated.emit()
+
+    def stop(self, add_increment: bool = False) -> None:
+        if self.active is not None:
+            color = self.active
+            self._consume(time.monotonic(), check_flag=False)
+            if add_increment and self.increment:
+                self.remaining[color] += self.increment
+        self.active = None
+        self.timer.stop()
+        self.updated.emit()
+
+    def is_running(self) -> bool:
+        return self.active is not None
+
+    def remaining_seconds(self, color: str) -> float:
+        return max(0.0, self.remaining[color])
+
+    def display(self, color: str) -> str:
+        seconds = max(0, int(math.ceil(self.remaining_seconds(color))))
+        minutes, seconds = divmod(seconds, 60)
+        if minutes >= 100:
+            hours, minutes = divmod(minutes, 60)
+            return f"{hours}:{minutes:02d}:{seconds:02d}"
+        return f"{minutes:02d}:{seconds:02d}"
+
+    def _tick(self) -> None:
+        if self.active is None:
+            return
+        self._consume(time.monotonic())
+        self.updated.emit()
+
+    def _consume(self, now: float, check_flag: bool = True) -> None:
+        if self.active is None:
+            return
+        elapsed = max(0.0, now - self._last)
+        self._last = now
+        color = self.active
+        self.remaining[color] = max(0.0, self.remaining[color] - elapsed)
+        if (
+            check_flag
+            and not self._flagged
+            and self.remaining[color] <= 0.0
+        ):
+            self._flagged = True
+            self.timer.stop()
+            self.flag.emit(color)
+
+
+# ---- stockfish_ai.py ----
+
+import atexit
+import os
+import shutil
+import subprocess
+import threading
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from queue import Empty, Queue
+from typing import Optional
+
+
+CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+DEFAULT_MOVETIME_MS = 800
+STARTUP_TIMEOUT = 10.0
+_ENGINE_LOCK = threading.RLock()
+_ENGINE: Optional["_EngineSession"] = None
+
+
+@dataclass(frozen=True)
+class AnalysisLine:
+    multipv: int
+    score_cp: Optional[int] = None
+    mate: Optional[int] = None
+    pv: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    bestmove: str
+    score_cp: Optional[int] = None
+    mate: Optional[int] = None
+    lines: tuple[AnalysisLine, ...] = ()
+
+
+class _AnalysisCancelled(RuntimeError):
+    pass
+
+
+def _stockfish_search_dirs() -> list[Path]:
+    directories: list[Path] = []
+
+    def add(path: Optional[Path]) -> None:
+        if path is None:
+            return
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved not in directories:
+            directories.append(resolved)
+
+    add(BASE_DIR)
+
+    compiled = globals().get("__compiled__")
+    containing_dir = (
+        getattr(compiled, "containing_dir", None) if compiled else None
+    )
+    if containing_dir:
+        add(Path(str(containing_dir)))
+
+    add(Path(__file__).resolve().parent)
+    add(Path(sys.executable).resolve().parent)
+
+    if sys.argv and sys.argv[0]:
+        add(Path(sys.argv[0]).resolve().parent)
+
+    return directories
+
+
+def find_stockfish() -> Optional[Path]:
+    candidates: list[Path] = []
+
+    env_path = os.environ.get("STOCKFISH_PATH")
+    if env_path:
+        candidates.append(Path(env_path.strip().strip('"')))
+
+    for directory in _stockfish_search_dirs():
+        candidates.append(directory / "stockfish.exe")
+        candidates.append(directory / "stockfish" / "stockfish.exe")
+
+        stockfish_dir = directory / "stockfish"
+        if stockfish_dir.is_dir():
+            candidates.extend(sorted(stockfish_dir.glob("*.exe")))
+
+        candidates.extend(sorted(directory.glob("stockfish*.exe")))
+
+    for name in ("stockfish", "stockfish.exe"):
+        found = shutil.which(name)
+        if found:
+            candidates.append(Path(found))
+
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                return candidate.resolve()
+        except OSError:
+            continue
+    return None
+
+
+def _parse_score(line: str) -> tuple[Optional[int], Optional[int]]:
+    parts = line.split()
+    for index, token in enumerate(parts):
+        if token != "score" or index + 2 >= len(parts):
+            continue
+        kind = parts[index + 1]
+        try:
+            value = int(parts[index + 2])
+        except ValueError:
+            continue
+        if kind == "cp":
+            return value, None
+        if kind == "mate":
+            return None, value
+    return None, None
+
+
+def _parse_info(
+    line: str,
+) -> Optional[tuple[int, Optional[int], Optional[int], list[str]]]:
+    parts = line.split()
+    multipv = 1
+    if "multipv" in parts:
+        index = parts.index("multipv")
+        if index + 1 < len(parts):
+            try:
+                multipv = max(1, int(parts[index + 1]))
+            except ValueError:
+                multipv = 1
+    score_cp, mate = _parse_score(line)
+    pv: list[str] = []
+    if "pv" in parts:
+        index = parts.index("pv")
+        raw_pv = parts[index + 1 :]
+        for token in raw_pv:
+            if token.startswith("(") or token in ("bmc",):
+                break
+            pv.append(token)
+    if score_cp is None and mate is None and not pv:
+        return None
+    return multipv, score_cp, mate, pv
+
+
+class _EngineSession:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._output: Queue[Optional[str]] = Queue()
+        self._send_lock = threading.Lock()
+        self._closed = False
+
+        try:
+            self.process = subprocess.Popen(
+                [str(path)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                cwd=str(path.parent),
+                creationflags=CREATE_NO_WINDOW,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"无法启动 Stockfish：{exc}") from exc
+
+        assert self.process.stdin is not None
+        assert self.process.stdout is not None
+
+        threading.Thread(target=self._read_output, daemon=True).start()
+
+        try:
+            self._send("uci")
+            self.wait_for("uciok", STARTUP_TIMEOUT)
+            self._send("isready")
+            self.wait_for("readyok", STARTUP_TIMEOUT)
+        except Exception:
+            self.close()
+            raise
+
+    def _read_output(self) -> None:
+        assert self.process.stdout is not None
+        try:
+            for line in self.process.stdout:
+                self._output.put(line)
+        except (OSError, ValueError):
+            pass
+        finally:
+            self._output.put(None)
+
+    def _send(self, command: str) -> None:
+        with self._send_lock:
+            if self._closed:
+                raise RuntimeError("Stockfish 进程已关闭")
+            assert self.process.stdin is not None
+            try:
+                self.process.stdin.write(command + "\n")
+                self.process.stdin.flush()
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                raise RuntimeError("Stockfish 进程已退出") from exc
+
+    def wait_for(self, prefix: str, timeout: float) -> str:
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Stockfish 响应超时")
+            try:
+                line = self._output.get(timeout=remaining)
+            except Empty as exc:
+                raise RuntimeError("Stockfish 响应超时") from exc
+            if line is None:
+                raise RuntimeError("Stockfish 进程已退出")
+            if line.startswith(prefix):
+                return line
+
+    @staticmethod
+    def _check_cancel(cancel_event: Optional[threading.Event]) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise _AnalysisCancelled("分析已取消")
+
+    def search(
+        self,
+        fen: Optional[str],
+        moves: Optional[list[str]],
+        movetime_ms: int,
+        skill_level: Optional[int],
+        cancel_event: Optional[threading.Event],
+        multipv: int = 1,
+    ) -> AnalysisResult:
+        self._check_cancel(cancel_event)
+
+        level = 20 if skill_level is None else max(0, min(20, int(skill_level)))
+        count = max(1, min(5, int(multipv)))
+        self._send(f"setoption name Skill Level value {level}")
+        self._send(f"setoption name MultiPV value {count}")
+        self._send("isready")
+        self.wait_for("readyok", STARTUP_TIMEOUT)
+
+        self._check_cancel(cancel_event)
+
+        if moves is not None:
+            if moves:
+                self._send("position startpos moves " + " ".join(moves))
+            else:
+                self._send("position startpos")
+        else:
+            self._send(f"position fen {fen}")
+
+        search_ms = max(50, int(movetime_ms))
+        self._send(f"go movetime {search_ms}")
+
+        bestmove: Optional[str] = None
+        score_cp: Optional[int] = None
+        mate: Optional[int] = None
+        lines: dict[int, AnalysisLine] = {}
+        deadline = time.monotonic() + max(10.0, search_ms / 1000 + 15.0)
+        cancel_sent = False
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Stockfish 思考超时")
+            if (
+                cancel_event is not None
+                and cancel_event.is_set()
+                and not cancel_sent
+            ):
+                try:
+                    self._send("stop")
+                except RuntimeError:
+                    pass
+                cancel_sent = True
+            timeout = 0.05 if cancel_event is not None else remaining
+            try:
+                line = self._output.get(timeout=min(remaining, timeout))
+            except Empty:
+                continue
+            if line is None:
+                raise RuntimeError("Stockfish 进程已退出")
+
+            if line.startswith("info"):
+                parsed = _parse_info(line)
+                if parsed is not None:
+                    index, line_cp, line_mate, pv = parsed
+                    lines[index] = AnalysisLine(
+                        multipv=index,
+                        score_cp=line_cp,
+                        mate=line_mate,
+                        pv=tuple(pv),
+                    )
+                    if index == 1 and (
+                        line_cp is not None or line_mate is not None
+                    ):
+                        score_cp, mate = line_cp, line_mate
+
+            if line.startswith("bestmove"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    bestmove = parts[1]
+                if cancel_sent or (
+                    cancel_event is not None and cancel_event.is_set()
+                ):
+                    raise _AnalysisCancelled("分析已取消")
+                break
+
+        if not bestmove or bestmove == "(none)":
+            raise RuntimeError("Stockfish 没有返回有效着法")
+        ordered = tuple(
+            sorted(lines.values(), key=lambda item: item.multipv)
+        )
+        if ordered and score_cp is None and mate is None:
+            primary = next(
+                (item for item in ordered if item.multipv == 1), ordered[0]
+            )
+            score_cp, mate = primary.score_cp, primary.mate
+        return AnalysisResult(
+            bestmove=bestmove,
+            score_cp=score_cp,
+            mate=mate,
+            lines=ordered,
+        )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            assert self.process.stdin is not None
+            self.process.stdin.write("quit\n")
+            self.process.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError, AssertionError):
+            pass
+        try:
+            self.process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            try:
+                self.process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            assert self.process.stdin is not None
+            self.process.stdin.close()
+        except (OSError, ValueError, AssertionError):
+            pass
+
+
+def _get_session(path: Path) -> _EngineSession:
+    global _ENGINE
+    if _ENGINE is not None and _ENGINE.path == path:
+        return _ENGINE
+    if _ENGINE is not None:
+        _ENGINE.close()
+        _ENGINE = None
+    session = _EngineSession(path)
+    _ENGINE = session
+    return session
+
+
+def _close_engine() -> None:
+    global _ENGINE
+    if not _ENGINE_LOCK.acquire(timeout=3.0):
+        return
+    try:
+        if _ENGINE is not None:
+            _ENGINE.close()
+            _ENGINE = None
+    finally:
+        _ENGINE_LOCK.release()
+
+
+atexit.register(_close_engine)
+
+
+def _run_uci(
+    fen: Optional[str],
+    moves: Optional[list[str]],
+    movetime_ms: int,
+    skill_level: Optional[int],
+    cancel_event: Optional[threading.Event] = None,
+    multipv: int = 1,
+) -> AnalysisResult:
+    path = find_stockfish()
+    if path is None:
+        raise RuntimeError(
+            "未找到 Stockfish 引擎，请将 stockfish.exe 放入 stockfish/ 目录，"
+            "或设置 STOCKFISH_PATH 环境变量"
+        )
+    if fen is None and moves is None:
+        raise RuntimeError("缺少当前局面")
+    if cancel_event is not None and cancel_event.is_set():
+        raise _AnalysisCancelled("分析已取消")
+
+    global _ENGINE
+    with _ENGINE_LOCK:
+        if cancel_event is not None and cancel_event.is_set():
+            raise _AnalysisCancelled("分析已取消")
+        session = _get_session(path)
+        try:
+            return session.search(
+                fen,
+                moves,
+                movetime_ms,
+                skill_level,
+                cancel_event,
+                multipv,
+            )
+        except _AnalysisCancelled:
+            raise
+        except Exception:
+            session.close()
+            if _ENGINE is session:
+                _ENGINE = None
+            raise
+
+
+def ask_stockfish_for_move(
+    fen: Optional[str] = None,
+    moves: Optional[list[str]] = None,
+    movetime_ms: int = DEFAULT_MOVETIME_MS,
+    skill_level: Optional[int] = None,
+    cancel_event: Optional[threading.Event] = None,
+) -> str:
+    return _run_uci(
+        fen, moves, movetime_ms, skill_level, cancel_event
+    ).bestmove
+
+
+def analyse_position(
+    fen: Optional[str] = None,
+    moves: Optional[list[str]] = None,
+    movetime_ms: int = 400,
+    cancel_event: Optional[threading.Event] = None,
+    multipv: int = 1,
+) -> AnalysisResult:
+    return _run_uci(
+        fen, moves, movetime_ms, None, cancel_event, multipv
+    )
+
+
+# ---- coach_ai.py ----
+
+import os
+from typing import Iterator
+
+
+DEFAULT_BASE_URL = "https://api.deepseek.com"
+DEFAULT_MODEL = "deepseek-flash"
+
+SYSTEM_PROMPT = (
+    "你是一名严谨、务实的国际象棋教练。"
+    "只依据用户提供的棋谱、局面、Stockfish 评估和标注作答，"
+    "不要编造不存在的着法或引擎数据。"
+    "使用中文，结构清晰，重点解释失误与精彩着法，并给出可执行的练习建议。"
+)
+
+
+def _client(
+    api_key: str,
+    base_url: str,
+    timeout: float,
+):
+    if not api_key:
+        raise RuntimeError(
+            "未配置 DeepSeek API Key。请在教练窗口中点击“配置 DeepSeek”，"
+            "或设置环境变量 DEEPSEEK_API_KEY。"
+        )
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError(
+            "缺少 openai 依赖，请先运行 pip install openai"
+        ) from exc
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url or DEFAULT_BASE_URL,
+        timeout=timeout,
+        max_retries=1,
+    )
+
+
+def ask_deepseek_coach(
+    prompt: str,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 60.0,
+) -> str:
+    client = _client(api_key, base_url, timeout)
+    response = client.chat.completions.create(
+        model=model or DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        stream=False,
+    )
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("DeepSeek 未返回内容")
+    return content
+
+
+def stream_deepseek_coach(
+    prompt: str,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str = DEFAULT_MODEL,
+    timeout: float = 60.0,
+) -> Iterator[str]:
+    client = _client(api_key, base_url, timeout)
+    response = client.chat.completions.create(
+        model=model or DEFAULT_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        stream=True,
+    )
+    produced = False
+    for chunk in response:
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        delta = choices[0].delta
+        content = getattr(delta, "content", None)
+        if content:
+            produced = True
+            yield content
+    if not produced:
+        raise RuntimeError("DeepSeek 未返回内容")
+
+
+def env_api_key() -> str:
+    return os.environ.get("DEEPSEEK_API_KEY", "").strip()
+
+
+# ---- lan.py ----
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import socket
+import struct
+import threading
+import time
+from typing import Callable, Optional
+from urllib.parse import urlsplit
+
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+DEFAULT_PORT = 8765
+DISCOVERY_PORT = 45876
+MAX_MESSAGE_BYTES = 1_000_000
+PROTOCOL_VERSION = 2
+RATE_LIMIT_MESSAGES = 160
+RATE_LIMIT_WINDOW = 1.0
+
+
+class LanError(Exception):
+    pass
+
+
+def parse_address(address: str, default_port: int = DEFAULT_PORT) -> tuple[str, int]:
+    raw = address.strip()
+    if not raw:
+        raise LanError("请输入联机地址")
+    if "://" not in raw:
+        raw = "http://" + raw
+    try:
+        parsed = urlsplit(raw)
+    except ValueError as exc:
+        raise LanError("地址格式不正确") from exc
+
+    scheme = parsed.scheme.lower()
+    if scheme in ("https", "wss"):
+        raise LanError("暂不支持 TLS（https/wss），请使用 http、tcp 或 ws")
+    if scheme not in ("http", "ws", "tcp"):
+        raise LanError("地址协议仅支持 http://、tcp:// 或 ws://")
+
+    host = parsed.hostname
+    if not host:
+        raise LanError("地址中缺少主机名或 IP")
+    try:
+        port = parsed.port or default_port
+    except ValueError as exc:
+        raise LanError("端口无效") from exc
+    if not 1 <= port <= 65535:
+        raise LanError("端口必须在 1-65535 之间")
+    return host, port
+
+
+def get_lan_ip() -> str:
+    candidates: list[str] = []
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            candidates.append(sock.getsockname()[0])
+        finally:
+            sock.close()
+    except OSError:
+        pass
+
+    try:
+        for info in socket.getaddrinfo(
+            socket.gethostname(), None, socket.AF_INET
+        ):
+            candidates.append(info[4][0])
+    except OSError:
+        pass
+
+    for ip in candidates:
+        if ip and not ip.startswith("127."):
+            return ip
+    return candidates[0] if candidates else "127.0.0.1"
+
+
+def _recv_exact(sock: socket.socket, buffer: bytearray, size: int) -> bytes:
+    while len(buffer) < size:
+        chunk = sock.recv(max(4096, size - len(buffer)))
+        if not chunk:
+            raise LanError("连接已关闭")
+        buffer.extend(chunk)
+    data = bytes(buffer[:size])
+    del buffer[:size]
+    return data
+
+
+def _read_http_headers(
+    sock: socket.socket, buffer: bytearray
+) -> tuple[str, dict[str, str]]:
+    while b"\r\n\r\n" not in buffer:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise LanError("连接在握手时关闭")
+        buffer.extend(chunk)
+        if len(buffer) > 65536:
+            raise LanError("握手数据过大")
+
+    end = buffer.find(b"\r\n\r\n") + 4
+    raw = bytes(buffer[:end])
+    del buffer[:end]
+    try:
+        text = raw.decode("latin-1")
+    except UnicodeDecodeError as exc:
+        raise LanError("握手数据编码错误") from exc
+
+    lines = text.split("\r\n")
+    headers: dict[str, str] = {}
+    for line in lines[1:]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            headers[key.strip().lower()] = value.strip()
+    return lines[0], headers
+
+
+def _send_http_error(
+    sock: socket.socket, status: str, message: str
+) -> None:
+    body = message.encode("utf-8")
+    response = (
+        f"HTTP/1.1 {status}\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("ascii") + body
+    try:
+        sock.sendall(response)
+    except OSError:
+        pass
+
+
+def _server_handshake(
+    sock: socket.socket,
+    buffer: bytearray,
+    auth_token: str = "",
+) -> None:
+    request_line, headers = _read_http_headers(sock, buffer)
+    upgrade = headers.get("upgrade", "").lower()
+    connection = headers.get("connection", "").lower()
+    key = headers.get("sec-websocket-key")
+
+    if upgrade != "websocket" or "upgrade" not in connection or not key:
+        body = (
+            "LAN Chess WebSocket endpoint. "
+            "Open the app and use the online dialog to connect."
+        ).encode("utf-8")
+        response = (
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii") + body
+        try:
+            sock.sendall(response)
+        except OSError:
+            pass
+        raise LanError("对方没有发起 WebSocket 升级")
+
+    version = headers.get("x-chess-version", "")
+    if version != str(PROTOCOL_VERSION):
+        _send_http_error(
+            sock,
+            "426 Upgrade Required",
+            f"Protocol version {PROTOCOL_VERSION} required",
+        )
+        raise LanError(
+            f"协议版本不兼容（需要 {PROTOCOL_VERSION}，收到 {version or '无'}）"
+        )
+
+    if auth_token:
+        supplied = headers.get("x-chess-token", "")
+        if not hmac.compare_digest(supplied, auth_token):
+            _send_http_error(sock, "401 Unauthorized", "Invalid room password")
+            raise LanError("房间密码错误")
+
+    accept = base64.b64encode(
+        hashlib.sha1((key + WS_GUID).encode("ascii")).digest()
+    ).decode("ascii")
+    response = (
+        "HTTP/1.1 101 Switching Protocols\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Accept: {accept}\r\n"
+        "\r\n"
+    )
+    sock.sendall(response.encode("ascii"))
+
+
+def _client_handshake(
+    sock: socket.socket,
+    host: str,
+    port: int,
+    buffer: bytearray,
+    auth_token: str = "",
+) -> None:
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
+    host_header = f"{host}:{port}"
+    if ":" in host and not host.startswith("["):
+        host_header = f"[{host}]:{port}"
+
+    auth_header = (
+        f"X-Chess-Token: {auth_token}\r\n" if auth_token else ""
+    )
+    request = (
+        "GET / HTTP/1.1\r\n"
+        f"Host: {host_header}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        f"X-Chess-Version: {PROTOCOL_VERSION}\r\n"
+        f"{auth_header}"
+        "\r\n"
+    )
+    sock.sendall(request.encode("ascii"))
+
+    status_line, headers = _read_http_headers(sock, buffer)
+    if " 101 " not in status_line:
+        raise LanError(f"WebSocket 升级失败：{status_line}")
+
+    expected = base64.b64encode(
+        hashlib.sha1((key + WS_GUID).encode("ascii")).digest()
+    ).decode("ascii")
+    if headers.get("sec-websocket-accept") != expected:
+        raise LanError("WebSocket 握手校验失败")
+
+
+def _mask_payload(payload: bytes, key: bytes) -> bytes:
+    return bytes(byte ^ key[index % 4] for index, byte in enumerate(payload))
+
+
+def _make_frame(opcode: int, payload: bytes, masked: bool) -> bytes:
+    header = bytearray()
+    header.append(0x80 | (opcode & 0x0F))
+    length = len(payload)
+    mask_bit = 0x80 if masked else 0
+    if length < 126:
+        header.append(mask_bit | length)
+    elif length < 65536:
+        header.append(mask_bit | 126)
+        header.extend(struct.pack("!H", length))
+    else:
+        header.append(mask_bit | 127)
+        header.extend(struct.pack("!Q", length))
+
+    if masked:
+        key = os.urandom(4)
+        header.extend(key)
+        payload = _mask_payload(payload, key)
+    return bytes(header) + payload
+
+
+class WebSocketConnection:
+    def __init__(
+        self,
+        sock: socket.socket,
+        buffer: bytearray,
+        is_client: bool,
+        on_message: Callable[[str], None],
+        on_close: Callable[[str], None],
+    ) -> None:
+        self.sock = sock
+        self._buffer = buffer
+        self.is_client = is_client
+        self._on_message = on_message
+        self._on_close = on_close
+        self._send_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._closed = False
+        self._notified = False
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(
+            target=self._reader_loop, daemon=True
+        )
+        self._thread.start()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def send_json(self, data: dict) -> None:
+        text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+        self._send_frame(0x1, text.encode("utf-8"))
+
+    def _send_frame(self, opcode: int, payload: bytes) -> None:
+        with self._send_lock:
+            if self._closed:
+                raise LanError("连接已关闭")
+            try:
+                self.sock.sendall(
+                    _make_frame(opcode, payload, self.is_client)
+                )
+            except OSError as exc:
+                raise LanError(f"发送失败：{exc}") from exc
+
+    def _reader_loop(self) -> None:
+        reason = "对方已断开连接"
+        fragments = bytearray()
+        fragment_opcode: Optional[int] = None
+        try:
+            while not self._closed:
+                header = _recv_exact(self.sock, self._buffer, 2)
+                first, second = header[0], header[1]
+                fin = bool(first & 0x80)
+                opcode = first & 0x0F
+                masked = bool(second & 0x80)
+                length = second & 0x7F
+
+                if length == 126:
+                    length = struct.unpack(
+                        "!H", _recv_exact(self.sock, self._buffer, 2)
+                    )[0]
+                elif length == 127:
+                    length = struct.unpack(
+                        "!Q", _recv_exact(self.sock, self._buffer, 8)
+                    )[0]
+
+                if length > MAX_MESSAGE_BYTES:
+                    raise LanError("收到的消息过大")
+
+                mask_key = (
+                    _recv_exact(self.sock, self._buffer, 4)
+                    if masked
+                    else None
+                )
+                payload = _recv_exact(self.sock, self._buffer, length)
+                if mask_key is not None:
+                    payload = _mask_payload(payload, mask_key)
+
+                if opcode == 0x8:
+                    reason = "对方已断开连接"
+                    break
+                if opcode == 0x9:
+                    try:
+                        self._send_frame(0xA, payload)
+                    except LanError:
+                        break
+                    continue
+                if opcode == 0xA:
+                    continue
+
+                if opcode in (0x1, 0x2):
+                    fragments = bytearray(payload)
+                    fragment_opcode = opcode
+                elif opcode == 0x0:
+                    if fragment_opcode is None:
+                        raise LanError("收到无效的 WebSocket 分片")
+                    fragments.extend(payload)
+                    if len(fragments) > MAX_MESSAGE_BYTES:
+                        raise LanError("收到的分片消息过大")
+                else:
+                    continue
+
+                if fin:
+                    message = bytes(fragments)
+                    fragments = bytearray()
+                    if fragment_opcode == 0x1:
+                        self._on_message(message.decode("utf-8", "replace"))
+                    fragment_opcode = None
+        except (OSError, LanError, ConnectionError) as exc:
+            reason = str(exc) if isinstance(exc, LanError) else "连接已中断"
+        finally:
+            self._notify_close(reason)
+
+    def _notify_close(self, reason: str) -> None:
+        with self._state_lock:
+            if self._notified:
+                return
+            self._notified = True
+            self._closed = True
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+        self._on_close(reason)
+
+    def close(self) -> None:
+        with self._send_lock:
+            if self._closed:
+                return
+            try:
+                self.sock.sendall(
+                    _make_frame(0x8, struct.pack("!H", 1000), self.is_client)
+                )
+            except OSError:
+                pass
+            self._closed = True
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+class LanManager(QObject):
+    hosting = pyqtSignal(str, str, str)
+    connected = pyqtSignal(bool)
+    messageReceived = pyqtSignal(dict)
+    disconnected = pyqtSignal(str)
+    errorOccurred = pyqtSignal(str)
+
+    def __init__(self, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self._lock = threading.RLock()
+        self._token = 0
+        self._listener: Optional[socket.socket] = None
+        self._conn: Optional[WebSocketConnection] = None
+        self._stop = threading.Event()
+        self._discovery_stop: Optional[threading.Event] = None
+        self._send_seq = 0
+        self._recv_seq = 0
+        self._rate_start = time.monotonic()
+        self._rate_count = 0
+
+    def _stop_discovery(self) -> None:
+        with self._lock:
+            stop = self._discovery_stop
+            self._discovery_stop = None
+        if stop is not None:
+            stop.set()
+
+    def _prepare_session(self) -> tuple[int, threading.Event]:
+        self._stop_discovery()
+        with self._lock:
+            self._stop.set()
+            listener = self._listener
+            conn = self._conn
+            self._listener = None
+            self._conn = None
+            self._send_seq = 0
+            self._recv_seq = 0
+            self._rate_start = time.monotonic()
+            self._rate_count = 0
+            self._token += 1
+            token = self._token
+            stop = threading.Event()
+            self._stop = stop
+
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        if conn is not None:
+            conn.close()
+        return token, stop
+
+    def host(self, port: int, password: str = "") -> bool:
+        token, stop = self._prepare_session()
+        auth_token = (
+            hashlib.sha256(password.encode("utf-8")).hexdigest()
+            if password
+            else ""
+        )
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("0.0.0.0", int(port)))
+            listener.listen(2)
+            listener.settimeout(0.5)
+        except OSError as exc:
+            try:
+                listener.close()
+            except OSError:
+                pass
+            self.errorOccurred.emit(f"无法监听端口 {port}：{exc}")
+            return False
+
+        with self._lock:
+            if token != self._token:
+                listener.close()
+                return False
+            self._listener = listener
+
+        ip = get_lan_ip()
+        http = f"http://{ip}:{port}"
+        tcp = f"tcp://{ip}:{port}"
+        ws = f"ws://{ip}:{port}"
+        self.hosting.emit(http, tcp, ws)
+
+        discovery_stop = threading.Event()
+        with self._lock:
+            self._discovery_stop = discovery_stop
+        threading.Thread(
+            target=self._broadcast_loop,
+            args=(port, ip, discovery_stop),
+            daemon=True,
+        ).start()
+
+        threading.Thread(
+            target=self._accept_loop,
+            args=(listener, stop, token, auth_token),
+            daemon=True,
+        ).start()
+        return True
+
+    def _broadcast_loop(
+        self, port: int, ip: str, stop: threading.Event
+    ) -> None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            payload = json.dumps(
+                {
+                    "type": "chess_room",
+                    "name": f"{socket.gethostname()} 的棋室",
+                    "ip": ip,
+                    "port": port,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8")
+            targets = {"255.255.255.255"}
+            if ip.count(".") == 3:
+                targets.add(ip.rsplit(".", 1)[0] + ".255")
+            while not stop.is_set():
+                for target in targets:
+                    try:
+                        sock.sendto(payload, (target, DISCOVERY_PORT))
+                    except OSError:
+                        pass
+                stop.wait(1.8)
+        finally:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _accept_loop(
+        self,
+        listener: socket.socket,
+        stop: threading.Event,
+        token: int,
+        auth_token: str,
+    ) -> None:
+        try:
+            while not stop.is_set():
+                try:
+                    client, _address = listener.accept()
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+
+                if stop.is_set():
+                    client.close()
+                    return
+
+                try:
+                    client.settimeout(10.0)
+                    _configure_socket(client)
+                    buffer = bytearray()
+                    _server_handshake(client, buffer, auth_token)
+                    client.settimeout(None)
+                except (OSError, LanError) as exc:
+                    try:
+                        client.close()
+                    except OSError:
+                        pass
+                    if not stop.is_set() and token == self._token:
+                        self.errorOccurred.emit(f"连接握手失败：{exc}")
+                    continue
+
+                try:
+                    listener.close()
+                except OSError:
+                    pass
+                self._stop_discovery()
+
+                connection = WebSocketConnection(
+                    client,
+                    buffer,
+                    is_client=False,
+                    on_message=lambda text: self._handle_text(token, text),
+                    on_close=lambda reason: self._handle_close(token, reason),
+                )
+                with self._lock:
+                    if token != self._token:
+                        connection.close()
+                        return
+                    self._conn = connection
+                    self._listener = None
+                connection.start()
+                if token == self._token:
+                    self.connected.emit(True)
+                return
+        except OSError:
+            pass
+        finally:
+            try:
+                listener.close()
+            except OSError:
+                pass
+
+    def connect(self, address: str, password: str = "") -> bool:
+        try:
+            host, port = parse_address(address)
+        except LanError as exc:
+            self.errorOccurred.emit(str(exc))
+            return False
+
+        token, stop = self._prepare_session()
+        auth_token = (
+            hashlib.sha256(password.encode("utf-8")).hexdigest()
+            if password
+            else ""
+        )
+        threading.Thread(
+            target=self._connect_loop,
+            args=(host, port, token, stop, auth_token),
+            daemon=True,
+        ).start()
+        return True
+
+    def _connect_loop(
+        self,
+        host: str,
+        port: int,
+        token: int,
+        stop: threading.Event,
+        auth_token: str,
+    ) -> None:
+        sock: Optional[socket.socket] = None
+        try:
+            sock = socket.create_connection((host, port), timeout=8.0)
+            _configure_socket(sock)
+            sock.settimeout(10.0)
+            buffer = bytearray()
+            _client_handshake(sock, host, port, buffer, auth_token)
+            sock.settimeout(None)
+            if stop.is_set() or token != self._token:
+                sock.close()
+                return
+
+            connection = WebSocketConnection(
+                sock,
+                buffer,
+                is_client=True,
+                on_message=lambda text: self._handle_text(token, text),
+                on_close=lambda reason: self._handle_close(token, reason),
+            )
+            with self._lock:
+                if token != self._token:
+                    connection.close()
+                    return
+                self._conn = connection
+            connection.start()
+            if token == self._token:
+                self.connected.emit(False)
+        except (OSError, LanError) as exc:
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+            if not stop.is_set() and token == self._token:
+                self.errorOccurred.emit(f"连接失败：{exc}")
+
+    def _handle_text(self, token: int, text: str) -> None:
+        if token != self._token:
+            return
+        now = time.monotonic()
+        with self._lock:
+            if now - self._rate_start > RATE_LIMIT_WINDOW:
+                self._rate_start = now
+                self._rate_count = 0
+            self._rate_count += 1
+            if self._rate_count > RATE_LIMIT_MESSAGES:
+                self.errorOccurred.emit("联机消息过于频繁，已忽略")
+                return
+        try:
+            data = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            return
+        if not isinstance(data, dict):
+            return
+        if data.get("v") != PROTOCOL_VERSION:
+            self.errorOccurred.emit("联机协议版本不兼容")
+            return
+        seq = data.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool):
+            return
+        with self._lock:
+            if seq <= self._recv_seq:
+                return
+            self._recv_seq = seq
+        self.messageReceived.emit(data)
+
+    def _handle_close(self, token: int, reason: str) -> None:
+        self._stop_discovery()
+        with self._lock:
+            if token != self._token:
+                return
+            self._token += 1
+            self._conn = None
+            self._stop.set()
+            listener = self._listener
+            self._listener = None
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        self.disconnected.emit(reason)
+
+    def send(self, data: dict) -> bool:
+        with self._lock:
+            connection = self._conn
+            if connection is None:
+                return False
+            self._send_seq += 1
+            payload = dict(data)
+            payload["v"] = PROTOCOL_VERSION
+            payload["seq"] = self._send_seq
+        try:
+            connection.send_json(payload)
+            return True
+        except LanError as exc:
+            self.errorOccurred.emit(str(exc))
+            return False
+
+    def is_connected(self) -> bool:
+        with self._lock:
+            return self._conn is not None and not self._conn.closed
+
+    def disconnect(self, reason: str = "已断开连接") -> None:
+        self._stop_discovery()
+        with self._lock:
+            self._stop.set()
+            listener = self._listener
+            conn = self._conn
+            self._listener = None
+            self._conn = None
+            self._token += 1
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        if conn is not None:
+            conn.close()
+        self.disconnected.emit(reason)
+
+    def shutdown(self) -> None:
+        self._stop_discovery()
+        with self._lock:
+            self._stop.set()
+            listener = self._listener
+            conn = self._conn
+            self._listener = None
+            self._conn = None
+            self._token += 1
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        if conn is not None:
+            conn.close()
+
+
+def _configure_socket(sock: socket.socket) -> None:
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except OSError:
+        pass
+
+
+class LanDiscovery(QObject):
+    roomFound = pyqtSignal(dict)
+    errorOccurred = pyqtSignal(str)
+
+    def __init__(self, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self._sock: Optional[socket.socket] = None
+        self._thread: Optional[threading.Thread] = None
+        self._stop = threading.Event()
+
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> bool:
+        if self.is_running():
+            return True
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("", DISCOVERY_PORT))
+            sock.settimeout(0.5)
+        except OSError as exc:
+            try:
+                sock.close()
+            except OSError:
+                pass
+            self.errorOccurred.emit(f"无法搜索局域网房间：{exc}")
+            return False
+
+        self._sock = sock
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._loop, args=(sock, self._stop), daemon=True
+        )
+        self._thread.start()
+        return True
+
+    def stop(self) -> None:
+        self._stop.set()
+        sock = self._sock
+        self._sock = None
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        self._thread = None
+
+    def _loop(self, sock: socket.socket, stop: threading.Event) -> None:
+        while not stop.is_set():
+            try:
+                data, address = sock.recvfrom(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            try:
+                message = json.loads(data.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(message, dict):
+                continue
+            if message.get("type") != "chess_room":
+                continue
+            try:
+                port = int(message.get("port"))
+            except (TypeError, ValueError):
+                continue
+            if not 1 <= port <= 65535:
+                continue
+            ip = str(message.get("ip") or address[0])
+            name = str(message.get("name") or "国际象棋房间")[:60]
+            self.roomFound.emit(
+                {"name": name, "ip": ip, "port": port}
+            )
+
+
+# ---- spectator.py ----
+
+import hashlib
+import socket
+import threading
+from typing import Optional
+
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+
+class SpectatorServer(QObject):
+    errorOccurred = pyqtSignal(str)
+    hosting = pyqtSignal(str)
+
+    def __init__(self, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self._lock = threading.RLock()
+        self._listener: Optional[socket.socket] = None
+        self._stop = threading.Event()
+        self._connections: list[WebSocketConnection] = []
+        self._state: Optional[dict] = None
+        self._send_seq = 0
+
+    def start(self, port: int, password: str = "") -> bool:
+        self.stop()
+        auth_token = (
+            hashlib.sha256(password.encode("utf-8")).hexdigest()
+            if password
+            else ""
+        )
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("0.0.0.0", int(port)))
+            listener.listen(8)
+            listener.settimeout(0.5)
+        except OSError as exc:
+            try:
+                listener.close()
+            except OSError:
+                pass
+            self.errorOccurred.emit(f"无法启动观战端口 {port}：{exc}")
+            return False
+
+        stop = threading.Event()
+        with self._lock:
+            self._listener = listener
+            self._stop = stop
+            self._state = None
+            self._send_seq = 0
+        self.hosting.emit(f"ws://{get_lan_ip()}:{port}")
+        threading.Thread(
+            target=self._accept_loop,
+            args=(listener, stop, auth_token),
+            daemon=True,
+        ).start()
+        return True
+
+    def _accept_loop(
+        self,
+        listener: socket.socket,
+        stop: threading.Event,
+        auth_token: str,
+    ) -> None:
+        try:
+            while not stop.is_set():
+                try:
+                    client, _address = listener.accept()
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                if stop.is_set():
+                    try:
+                        client.close()
+                    except OSError:
+                        pass
+                    break
+                try:
+                    client.settimeout(10.0)
+                    _configure_socket(client)
+                    buffer = bytearray()
+                    _server_handshake(client, buffer, auth_token)
+                    client.settimeout(None)
+                except (OSError, LanError):
+                    try:
+                        client.close()
+                    except OSError:
+                        pass
+                    continue
+
+                connection = WebSocketConnection(
+                    client,
+                    buffer,
+                    is_client=False,
+                    on_message=lambda _text: None,
+                    on_close=self._remove_connection,
+                )
+                with self._lock:
+                    if stop.is_set():
+                        connection.close()
+                        break
+                    self._connections.append(connection)
+                    state = dict(self._state) if self._state else None
+                connection.start()
+                if state is not None:
+                    try:
+                        self._send_to(connection, state)
+                    except LanError:
+                        connection.close()
+                        self._remove_connection("发送观战状态失败")
+        finally:
+            try:
+                listener.close()
+            except OSError:
+                pass
+
+    def _remove_connection(self, reason: str) -> None:
+        del reason
+        with self._lock:
+            self._connections = [
+                item for item in self._connections if not item.closed
+            ]
+
+    def _send_to(self, connection: WebSocketConnection, data: dict) -> None:
+        with self._lock:
+            self._send_seq += 1
+            seq = self._send_seq
+        payload = dict(data)
+        payload["v"] = PROTOCOL_VERSION
+        payload["seq"] = seq
+        connection.send_json(payload)
+
+    def set_state(self, state: dict) -> None:
+        with self._lock:
+            self._state = dict(state)
+            connections = list(self._connections)
+        for connection in connections:
+            try:
+                self._send_to(connection, state)
+            except LanError:
+                connection.close()
+                self._remove_connection("观战连接已断开")
+
+    def stop(self) -> None:
+        with self._lock:
+            self._stop.set()
+            listener = self._listener
+            self._listener = None
+            connections = list(self._connections)
+            self._connections = []
+            self._state = None
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        for connection in connections:
+            connection.close()
+
+
+# ---- board_widgets.py ----
+
+import math
+from typing import Optional
+
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QPointF,
+    QRectF,
+    Qt,
+    QVariantAnimation,
+    pyqtSignal,
+)
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
+from PyQt6.QtWidgets import QInputDialog, QWidget
+
+
+def _piece_pixmap_from_embedded_data(piece: str) -> QPixmap:
+    color_suffix = "W" if piece.isupper() else "B"
+    stem = f"{PIECE_LETTERS[piece.upper()]}{color_suffix}"
+    data = PIECE_IMAGES_B64.get(stem)
+    pixmap = QPixmap()
+    if data is not None:
+        pixmap.loadFromData(base64.b64decode(data), "PNG")
+    return pixmap
+
+
+class EvalBar(QWidget):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setFixedWidth(18)
+        self.setMinimumHeight(120)
+        self.score_cp: Optional[int] = None
+        self.mate: Optional[int] = None
+        self.flipped = False
+        self._update_tooltip()
+
+    def set_evaluation(
+        self, score_cp: Optional[int], mate: Optional[int]
+    ) -> None:
+        self.score_cp = score_cp
+        self.mate = mate
+        self._update_tooltip()
+        self.update()
+
+    def set_flipped(self, flipped: bool) -> None:
+        self.flipped = flipped
+        self.update()
+
+    def reset(self) -> None:
+        self.set_evaluation(None, None)
+
+    def _update_tooltip(self) -> None:
+        if self.mate is not None:
+            side = "白方" if self.mate > 0 else "黑方"
+            if self.mate == 0:
+                text = "评估：将死"
+            else:
+                text = f"评估：{side} {abs(self.mate)} 步将死"
+        elif self.score_cp is not None:
+            text = f"评估：{self.score_cp / 100:+.2f}"
+        else:
+            text = "评估：--"
+        self.setToolTip(text)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        outer = QRectF(self.rect())
+        painter.fillRect(outer, QColor("#1b1a18"))
+        inner = outer.adjusted(2, 2, -2, -2)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+
+        if self.mate is not None:
+            fraction = 1.0 if self.mate > 0 else 0.0
+        elif self.score_cp is not None:
+            clamped = max(-1500, min(1500, self.score_cp))
+            fraction = 1.0 / (1.0 + 10 ** (-clamped / 400))
+        else:
+            fraction = 0.5
+
+        painter.fillRect(inner, QColor("#2b2926"))
+        white_height = inner.height() * fraction
+        if self.flipped:
+            white_rect = QRectF(
+                inner.x(), inner.y(), inner.width(), white_height
+            )
+        else:
+            white_rect = QRectF(
+                inner.x(),
+                inner.bottom() - white_height,
+                inner.width(),
+                white_height,
+            )
+        painter.fillRect(white_rect, QColor("#f4f1e8"))
+
+        painter.setPen(QPen(QColor(0, 0, 0, 80), 1))
+        painter.drawLine(
+            QPointF(inner.left(), inner.center().y()),
+            QPointF(inner.right(), inner.center().y()),
+        )
+
+
+class EvalGraphWidget(QWidget):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(74)
+        self.setToolTip("评估曲线（白方视角）")
+        self.scores: dict[int, int] = {}
+        self.current_ply = 0
+
+    def set_scores(self, scores: dict[int, int], current_ply: int) -> None:
+        self.scores = dict(scores)
+        self.current_ply = current_ply
+        self.update()
+
+    def clear(self) -> None:
+        self.scores.clear()
+        self.current_ply = 0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        outer = QRectF(self.rect())
+        painter.fillRect(outer, QColor("#1d1b19"))
+        painter.setPen(QPen(QColor("#3d3933"), 1))
+        painter.drawRect(outer.adjusted(0.5, 0.5, -0.5, -0.5))
+        inner = outer.adjusted(8, 8, -8, -8)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+
+        font = QFont(self.font())
+        font.setPixelSize(10)
+        painter.setFont(font)
+        painter.setPen(QColor("#8d877d"))
+        painter.drawText(
+            QRectF(inner.left(), 2, inner.width(), 12),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            "评估曲线",
+        )
+
+        if not self.scores:
+            painter.setPen(QColor("#77716a"))
+            painter.drawText(
+                inner,
+                Qt.AlignmentFlag.AlignCenter,
+                "暂无数据",
+            )
+            return
+
+        max_ply = max(
+            [self.current_ply, 1, *self.scores.keys()]
+        )
+        center_y = inner.center().y()
+        painter.setPen(QPen(QColor(120, 115, 105, 100), 1))
+        painter.drawLine(
+            QPointF(inner.left(), center_y),
+            QPointF(inner.right(), center_y),
+        )
+
+        points: list[QPointF] = []
+        for ply in sorted(self.scores):
+            clamped = max(-800, min(800, self.scores[ply]))
+            x = inner.left() + (ply / max_ply) * inner.width()
+            y = center_y - (clamped / 800.0) * (inner.height() / 2 - 8)
+            points.append(QPointF(x, y))
+        if len(points) >= 2:
+            painter.setPen(
+                QPen(QColor("#d8b26a"), 2, Qt.PenStyle.SolidLine)
+            )
+            painter.drawPolyline(QPolygonF(points))
+        elif points:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#d8b26a"))
+            painter.drawEllipse(points[0], 2.5, 2.5)
+
+        marker_x = inner.left() + (
+            min(self.current_ply, max_ply) / max_ply
+        ) * inner.width()
+        painter.setPen(QPen(QColor("#7bd88f"), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(
+            QPointF(marker_x, inner.top()),
+            QPointF(marker_x, inner.bottom()),
+        )
+
+
+class CapturedPiecesWidget(QWidget):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(40)
+        self.setToolTip("吃子")
+        self.by_white: list[str] = []
+        self.by_black: list[str] = []
+        self._source_cache: dict[str, QPixmap] = {}
+        self._scaled_cache: dict[tuple[str, int, float], QPixmap] = {}
+
+    def set_captured(
+        self, by_white: list[str], by_black: list[str]
+    ) -> None:
+        self.by_white = sorted(
+            by_white,
+            key=lambda piece: PIECE_VALUES.get(piece.upper(), 0),
+            reverse=True,
+        )
+        self.by_black = sorted(
+            by_black,
+            key=lambda piece: PIECE_VALUES.get(piece.upper(), 0),
+            reverse=True,
+        )
+        names = {"P": "兵", "N": "马", "B": "象", "R": "车", "Q": "后"}
+        white_captures = " ".join(
+            names.get(piece.upper(), piece) for piece in self.by_white
+        ) or "无"
+        black_captures = " ".join(
+            names.get(piece.upper(), piece) for piece in self.by_black
+        ) or "无"
+        self.setToolTip(
+            f"白方吃子：{white_captures}\n黑方吃子：{black_captures}"
+        )
+        self.update()
+
+    def clear(self) -> None:
+        self.set_captured([], [])
+
+    def _source_pixmap(self, piece: str) -> Optional[QPixmap]:
+        cached = self._source_cache.get(piece)
+        if cached is not None:
+            return cached if not cached.isNull() else None
+        pixmap = _piece_pixmap_from_embedded_data(piece)
+        self._source_cache[piece] = pixmap
+        return pixmap if not pixmap.isNull() else None
+
+    def _scaled_pixmap(self, piece: str, size: float) -> Optional[QPixmap]:
+        source = self._source_pixmap(piece)
+        if source is None:
+            return None
+        dpr = max(1.0, self.devicePixelRatioF())
+        target = max(1, int(size))
+        key = (piece, target, round(dpr, 2))
+        cached = self._scaled_cache.get(key)
+        if cached is not None:
+            return cached
+        scaled = source.scaled(
+            int(target * dpr),
+            int(target * dpr),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        scaled.setDevicePixelRatio(dpr)
+        self._scaled_cache[key] = scaled
+        return scaled
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        total = len(self.by_white) + len(self.by_black)
+        if total == 0:
+            return
+
+        painter.setPen(QPen(QColor(255, 255, 255, 20), 1))
+        painter.drawLine(0, 0, self.width(), 0)
+
+        label_font = QFont(self.font())
+        label_font.setPixelSize(10)
+        painter.setFont(label_font)
+        painter.setPen(QColor("#8d877d"))
+        painter.drawText(
+            QRectF(8, 0, 36, self.height()),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            "白吃",
+        )
+        painter.drawText(
+            QRectF(self.width() - 44, 0, 36, self.height()),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+            "黑吃",
+        )
+
+        available = max(1.0, self.width() - 100)
+        spacing = min(28.0, available / total)
+        size = spacing * 0.95
+        center_y = self.height() / 2
+
+        x = 48.0
+        for piece in self.by_white:
+            self._draw_piece(painter, piece, x, center_y - size / 2, size)
+            x += spacing
+
+        x = self.width() - 48.0 - size
+        for piece in self.by_black:
+            self._draw_piece(painter, piece, x, center_y - size / 2, size)
+            x -= spacing
+
+    def _draw_piece(
+        self,
+        painter: QPainter,
+        piece: str,
+        x: float,
+        y: float,
+        size: float,
+    ) -> None:
+        pixmap = self._scaled_pixmap(piece, size)
+        if pixmap is not None:
+            painter.drawPixmap(QPointF(x, y), pixmap)
+            return
+        font = QFont(self.font())
+        font.setPixelSize(max(10, int(size * 0.8)))
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(
+            QColor("#f4f1e8") if piece.isupper() else QColor("#1a1a1a")
+        )
+        painter.drawText(
+            QRectF(x, y, size, size),
+            Qt.AlignmentFlag.AlignCenter,
+            piece.upper(),
+        )
+
+
+class ChessBoard(QWidget):
+    stateChanged = pyqtSignal()
+    gameEnded = pyqtSignal(str)
+    moveCompleted = pyqtSignal()
+    moveSound = pyqtSignal(str)
+    newMovePlayed = pyqtSignal()
+    userMovePlayed = pyqtSignal(str)
+
+    ANIMATION_DURATION = 220
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setMinimumSize(560, 560)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.game = ChessGame()
+        self.selected: Optional[tuple[int, int]] = None
+        self.legal_moves: list[Move] = []
+        self.legal_targets: set[tuple[int, int]] = set()
+        self.game_over = False
+        self.locked_color: Optional[str] = None
+        self.input_locked = False
+        self.flipped = False
+        self.theme_name = "经典"
+        self.light_color, self.dark_color = THEMES[self.theme_name]
+        self.show_coordinates = True
+        self.hint_moves: list[Move] = []
+        self._redo_moves: list[Move] = []
+        self._dragging = False
+        self._drag_piece: Optional[str] = None
+        self._drag_pos: Optional[QPointF] = None
+        self._source_cache: dict[str, QPixmap] = {}
+        self._scaled_cache: dict[tuple[str, int, float], QPixmap] = {}
+        self._animation: Optional[dict] = None
+        self._animation_anim: Optional[QVariantAnimation] = None
+        self._pending_result: Optional[str] = None
+        self.result_override: Optional[str] = None
+        self._finish_message: Optional[str] = None
+        self.reviewing = False
+
+    def new_game(self) -> None:
+        self._cancel_animation()
+        self.game.reset()
+        self._redo_moves.clear()
+        self.reviewing = False
+        self.hint_moves = []
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.game_over = False
+        self.result_override = None
+        self._finish_message = None
+        self.update()
+        self.stateChanged.emit()
+
+    def set_game(self, game: ChessGame, reviewing: bool = False) -> None:
+        self._cancel_animation()
+        self.game = game
+        self._redo_moves.clear()
+        self.reviewing = reviewing
+        self.hint_moves = []
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.result_override = None
+        self._finish_message = None
+        self.game_over = bool(game.result_tag())
+        self.update()
+        self.stateChanged.emit()
+
+    def final_result(self) -> str:
+        return self.result_override or self.game.result_tag()
+
+    def finish_game(self, message: str, result_tag: str) -> None:
+        if self.game_over:
+            return
+        self._cancel_animation()
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.hint_moves = []
+        self.result_override = result_tag
+        self._finish_message = message
+        self.game_over = True
+        self.update()
+        self.stateChanged.emit()
+        self.moveSound.emit("end")
+        self.gameEnded.emit(message)
+
+    def rollback_to(self, ply: int) -> None:
+        self._cancel_animation()
+        ply = max(0, min(ply, len(self.game.history)))
+        while len(self.game.history) > ply:
+            self.game.undo_move()
+        self._redo_moves.clear()
+        self.result_override = None
+        self._finish_message = None
+        self.hint_moves = []
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.game_over = bool(self.game.result_tag())
+        self.update()
+        self.stateChanged.emit()
+
+    def undo(self) -> None:
+        if not self.game.history:
+            return
+        self.set_ply(len(self.game.history) - 1)
+
+    def redo(self) -> bool:
+        if not self._redo_moves:
+            return False
+        return self.set_ply(len(self.game.history) + 1)
+
+    def set_ply(self, ply: int) -> bool:
+        total = len(self.game.history) + len(self._redo_moves)
+        ply = max(0, min(ply, total))
+        if ply == len(self.game.history):
+            return False
+
+        self._cancel_animation()
+        changed = False
+        while len(self.game.history) > ply:
+            move = self.game.undo_move()
+            if move is None:
+                break
+            self._redo_moves.append(move)
+            changed = True
+        while len(self.game.history) < ply and self._redo_moves:
+            move = self._redo_moves.pop()
+            self.game.make_move(move)
+            changed = True
+
+        if changed:
+            self.selected = None
+            self.legal_moves = []
+            self.legal_targets = set()
+            self.hint_moves = []
+            self.game_over = bool(self.game.result_tag())
+            self.result_override = None
+            self._finish_message = None
+            self.update()
+            self.stateChanged.emit()
+        return changed
+
+    def is_reviewing(self) -> bool:
+        return self.reviewing or bool(self._redo_moves)
+
+    def total_plies(self) -> int:
+        return len(self.game.history) + len(self._redo_moves)
+
+    def set_theme(self, name: str) -> None:
+        if name not in THEMES:
+            return
+        self.theme_name = name
+        self.light_color, self.dark_color = THEMES[name]
+        self.update()
+
+    def set_coordinates(self, visible: bool) -> None:
+        self.show_coordinates = visible
+        self.update()
+
+    def flip(self) -> None:
+        self.flipped = not self.flipped
+        self.update()
+
+    def set_hint(self, move: Optional[Move]) -> None:
+        self.set_hint_moves([move] if move is not None else [])
+
+    def set_hint_moves(self, moves: list[Move]) -> None:
+        self.hint_moves = list(moves)
+        self.update()
+
+    def is_animating(self) -> bool:
+        return self._animation is not None
+
+    def status_text(self) -> str:
+        game = self.game
+        if self.game_over and self._finish_message:
+            return self._finish_message
+        if game.is_checkmate():
+            winner = "白方" if game.turn == "b" else "黑方"
+            return f"将死！{winner}获胜"
+        if game.is_stalemate():
+            return "逼和，双方和棋"
+        if game.is_insufficient_material():
+            return "和棋（子力不足）"
+        if game.is_seventyfive_move_draw():
+            return "和棋（75 回合规则）"
+        if game.is_fivefold_repetition():
+            return "和棋（五次重复局面）"
+        side = "白方" if game.turn == "w" else "黑方"
+        if game.in_check(game.turn):
+            return f"{side}被将军"
+        if game.is_claimable_draw():
+            return f"{side}走棋（可判和）"
+        return f"{side}走棋"
+
+    def _view_to_board(self, view_row: int, view_col: int) -> tuple[int, int]:
+        if self.flipped:
+            return 7 - view_row, 7 - view_col
+        return view_row, view_col
+
+    def _board_to_view(self, row: int, col: int) -> tuple[int, int]:
+        return self._view_to_board(row, col)
+
+    def _board_geometry(self) -> tuple[float, float, float]:
+        size = min(self.width(), self.height())
+        square = size / 8
+        left = (self.width() - size) / 2
+        top = (self.height() - size) / 2
+        return left, top, square
+
+    def _square_at(self, x: float, y: float) -> Optional[tuple[int, int]]:
+        left, top, square = self._board_geometry()
+        if not (left <= x < left + square * 8 and top <= y < top + square * 8):
+            return None
+        view_col = int((x - left) / square)
+        view_row = int((y - top) / square)
+        return self._view_to_board(view_row, view_col)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self.game_over or self.is_animating() or self.input_locked:
+            return
+        square = self._square_at(event.position().x(), event.position().y())
+        if square is None:
+            return
+
+        row, col = square
+        piece = self.game.piece_at(row, col)
+
+        if self.selected is not None and (row, col) in self.legal_targets:
+            self._play_move(row, col)
+            return
+
+        if piece is not None and self.game.color_of(piece) == self.game.turn:
+            if self.locked_color == self.game.turn:
+                return
+            self._select(row, col)
+            self._start_drag(row, col, event.position())
+            return
+
+        if self.selected is not None:
+            self._clear_selection()
+
+    def _start_drag(self, row: int, col: int, position: QPointF) -> None:
+        piece = self.game.piece_at(row, col)
+        if piece is None:
+            return
+        self._dragging = True
+        self._drag_piece = piece
+        self._drag_pos = QPointF(position)
+        self.setCursor(Qt.CursorShape.ClosedHandCursor)
+        self.update()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            self._drag_pos = QPointF(event.position())
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton or not self._dragging:
+            super().mouseReleaseEvent(event)
+            return
+
+        self._dragging = False
+        self._drag_piece = None
+        self._drag_pos = None
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        square = self._square_at(event.position().x(), event.position().y())
+        if (
+            square is not None
+            and self.selected is not None
+            and square in self.legal_targets
+        ):
+            self._play_move(*square)
+        else:
+            self.update()
+        super().mouseReleaseEvent(event)
+
+    def _select(self, row: int, col: int) -> None:
+        self.selected = (row, col)
+        self.legal_moves = self.game.legal_moves(row, col)
+        self.legal_targets = {(move.to_row, move.to_col) for move in self.legal_moves}
+        self.update()
+
+    def _clear_selection(self) -> None:
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.update()
+
+    def _play_move(self, to_row: int, to_col: int) -> None:
+        candidates = [
+            move
+            for move in self.legal_moves
+            if (move.to_row, move.to_col) == (to_row, to_col)
+        ]
+        if not candidates:
+            return
+
+        move = candidates[0]
+        if len(candidates) > 1:
+            promotion = self._ask_promotion()
+            if promotion is None:
+                return
+            move = next(
+                candidate for candidate in candidates if candidate.promotion == promotion
+            )
+
+        self.execute_move(move)
+        self.userMovePlayed.emit(ChessGame.move_to_uci(move))
+
+    def execute_move(self, move: Move) -> None:
+        game = self.game
+        moving_piece = game.piece_at(move.from_row, move.from_col)
+        if moving_piece is None:
+            return
+
+        if self._animation is not None:
+            self._cancel_animation()
+        self._redo_moves.clear()
+        self.reviewing = False
+        self.hint_moves = []
+        self._dragging = False
+        self._drag_piece = None
+        self._drag_pos = None
+
+        captured_piece = None
+        captured_pos: Optional[tuple[int, int]] = None
+        if move.is_en_passant:
+            captured_pos = (move.from_row, move.to_col)
+            captured_piece = game.piece_at(*captured_pos)
+        else:
+            target = game.piece_at(move.to_row, move.to_col)
+            if target is not None:
+                captured_pos = (move.to_row, move.to_col)
+                captured_piece = target
+
+        rook_piece = None
+        rook_from: Optional[tuple[int, int]] = None
+        rook_to: Optional[tuple[int, int]] = None
+        if move.is_castle:
+            rook_from_col = 7 if move.to_col > move.from_col else 0
+            rook_to_col = 5 if move.to_col > move.from_col else 3
+            rook_from = (move.from_row, rook_from_col)
+            rook_to = (move.from_row, rook_to_col)
+            rook_piece = game.piece_at(*rook_from)
+
+        game.make_move(move)
+        self.selected = None
+        self.legal_moves = []
+        self.legal_targets = set()
+        self.game_over = False
+        self._pending_result = None
+        self.result_override = None
+        self._finish_message = None
+
+        if game.is_checkmate():
+            self.game_over = True
+            winner = "白方" if game.turn == "b" else "黑方"
+            self._pending_result = f"将死！{winner}获胜"
+        elif game.is_stalemate():
+            self.game_over = True
+            self._pending_result = "逼和，双方和棋"
+        elif game.is_insufficient_material():
+            self.game_over = True
+            self._pending_result = "和棋（子力不足）"
+        elif game.is_seventyfive_move_draw():
+            self.game_over = True
+            self._pending_result = "和棋（75 回合规则）"
+        elif game.is_fivefold_repetition():
+            self.game_over = True
+            self._pending_result = "和棋（五次重复局面）"
+
+        if self.game_over:
+            sound = "end"
+        elif game.in_check(game.turn):
+            sound = "check"
+        elif captured_piece is not None:
+            sound = "capture"
+        else:
+            sound = "move"
+        self.moveSound.emit(sound)
+
+        self._start_animation(
+            move,
+            moving_piece,
+            captured_piece,
+            captured_pos,
+            rook_piece,
+            rook_from,
+            rook_to,
+        )
+        self.newMovePlayed.emit()
+        self.update()
+        self.stateChanged.emit()
+
+    def _start_animation(
+        self,
+        move: Move,
+        moving_piece: str,
+        captured_piece: Optional[str],
+        captured_pos: Optional[tuple[int, int]],
+        rook_piece: Optional[str],
+        rook_from: Optional[tuple[int, int]],
+        rook_to: Optional[tuple[int, int]],
+    ) -> None:
+        self._animation = {
+            "move": move,
+            "piece": moving_piece,
+            "from": (move.from_row, move.from_col),
+            "to": (move.to_row, move.to_col),
+            "captured_piece": captured_piece,
+            "captured_pos": captured_pos,
+            "rook_piece": rook_piece,
+            "rook_from": rook_from,
+            "rook_to": rook_to,
+            "progress": 0.0,
+        }
+        anim = QVariantAnimation(self)
+        anim.setDuration(self.ANIMATION_DURATION)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.valueChanged.connect(self._on_animation_value)
+        anim.finished.connect(self._on_animation_finished)
+        self._animation_anim = anim
+        anim.start()
+
+    def _on_animation_value(self, value) -> None:
+        if self._animation is None:
+            return
+        self._animation["progress"] = float(value)
+        self.update()
+
+    def _on_animation_finished(self) -> None:
+        anim = self._animation_anim
+        self._animation_anim = None
+        if anim is not None:
+            anim.deleteLater()
+        if self._animation is None:
+            return
+        self._animation = None
+        self.update()
+        self.moveCompleted.emit()
+        if self._pending_result:
+            message = self._pending_result
+            self._pending_result = None
+            self.gameEnded.emit(message)
+
+    def _cancel_animation(self) -> None:
+        anim = self._animation_anim
+        self._animation_anim = None
+        self._animation = None
+        self._pending_result = None
+        if anim is not None:
+            anim.stop()
+            anim.deleteLater()
+        self.update()
+
+    def _ask_promotion(self) -> Optional[str]:
+        options = list(PROMOTION_CHOICES.keys())
+        choice, accepted = QInputDialog.getItem(
+            self, "兵升变", "选择升变棋子：", options, 0, False
+        )
+        if not accepted:
+            return None
+        return PROMOTION_CHOICES[choice]
+
+    def _piece_pixmap(self, piece: str) -> Optional[QPixmap]:
+        cached = self._source_cache.get(piece)
+        if cached is not None:
+            return cached if not cached.isNull() else None
+
+        pixmap = _piece_pixmap_from_embedded_data(piece)
+        self._source_cache[piece] = pixmap
+        return pixmap if not pixmap.isNull() else None
+
+    def _scaled_piece(self, piece: str, logical_size: float) -> Optional[QPixmap]:
+        source = self._piece_pixmap(piece)
+        if source is None:
+            return None
+
+        dpr = max(1.0, self.devicePixelRatioF())
+        target = max(1, int(logical_size))
+        key = (piece, target, round(dpr, 2))
+        cached = self._scaled_cache.get(key)
+        if cached is not None:
+            return cached
+
+        scaled = source.scaled(
+            int(target * dpr),
+            int(target * dpr),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        scaled.setDevicePixelRatio(dpr)
+        self._scaled_cache[key] = scaled
+        return scaled
+
+    def resizeEvent(self, event) -> None:
+        self._scaled_cache.clear()
+        super().resizeEvent(event)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        painter.fillRect(self.rect(), QColor("#262421"))
+
+        left, top, square = self._board_geometry()
+        last_move = self.game.last_move
+        last_squares = set()
+        if last_move is not None:
+            last_squares = {
+                (last_move.from_row, last_move.from_col),
+                (last_move.to_row, last_move.to_col),
+            }
+
+        checked_king = None
+        if self.game.in_check(self.game.turn):
+            checked_king = self.game.find_king(self.game.turn)
+
+        for view_row in range(8):
+            for view_col in range(8):
+                row, col = self._view_to_board(view_row, view_col)
+                rect = QRectF(
+                    left + view_col * square,
+                    top + view_row * square,
+                    square,
+                    square,
+                )
+                is_light = (view_row + view_col) % 2 == 0
+                painter.fillRect(
+                    rect, self.light_color if is_light else self.dark_color
+                )
+
+                if (row, col) in last_squares:
+                    painter.fillRect(rect, LAST_MOVE_COLOR)
+                if self.selected == (row, col):
+                    painter.fillRect(rect, SELECTED_COLOR)
+                if checked_king == (row, col):
+                    painter.fillRect(rect, CHECK_COLOR)
+
+                if (row, col) in self.legal_targets:
+                    if self.game.piece_at(row, col) is None:
+                        radius = square * 0.14
+                        center = rect.center()
+                        painter.setPen(Qt.PenStyle.NoPen)
+                        painter.setBrush(LEGAL_DOT_COLOR)
+                        painter.drawEllipse(center, radius, radius)
+                    else:
+                        painter.setBrush(Qt.BrushStyle.NoBrush)
+                        painter.setPen(QPen(LEGAL_RING_COLOR, square * 0.055))
+                        margin = square * 0.07
+                        painter.drawEllipse(
+                            rect.adjusted(margin, margin, -margin, -margin)
+                        )
+                    painter.setPen(Qt.PenStyle.NoPen)
+
+        anim = self._animation
+        skip_squares: set[tuple[int, int]] = set()
+        if anim is not None:
+            skip_squares.add(anim["to"])
+            if anim["rook_to"] is not None:
+                skip_squares.add(anim["rook_to"])
+        if self._dragging and self.selected is not None:
+            skip_squares.add(self.selected)
+
+        for view_row in range(8):
+            for view_col in range(8):
+                row, col = self._view_to_board(view_row, view_col)
+                if (row, col) in skip_squares:
+                    continue
+                piece = self.game.piece_at(row, col)
+                if piece is None:
+                    continue
+                center_x, center_y = self._square_center(
+                    view_row, view_col, left, top, square
+                )
+                self._draw_piece_at(
+                    painter, piece, center_x, center_y, square * 0.92
+                )
+
+        if anim is not None:
+            progress = float(anim["progress"])
+            if anim["captured_piece"] is not None and anim["captured_pos"] is not None:
+                cap_view = self._board_to_view(*anim["captured_pos"])
+                cap_x, cap_y = self._square_center(
+                    *cap_view, left, top, square
+                )
+                self._draw_piece_at(
+                    painter,
+                    anim["captured_piece"],
+                    cap_x,
+                    cap_y,
+                    square * 0.92,
+                    opacity=max(0.0, 1.0 - progress),
+                    scale=max(0.5, 1.0 - 0.4 * progress),
+                )
+
+            from_view = self._board_to_view(*anim["from"])
+            to_view = self._board_to_view(*anim["to"])
+            from_x, from_y = self._square_center(
+                *from_view, left, top, square
+            )
+            to_x, to_y = self._square_center(*to_view, left, top, square)
+            piece_x = from_x + (to_x - from_x) * progress
+            piece_y = from_y + (to_y - from_y) * progress
+            self._draw_piece_at(
+                painter, anim["piece"], piece_x, piece_y, square * 0.92
+            )
+
+            if (
+                anim["rook_piece"] is not None
+                and anim["rook_from"] is not None
+                and anim["rook_to"] is not None
+            ):
+                rook_from_view = self._board_to_view(*anim["rook_from"])
+                rook_to_view = self._board_to_view(*anim["rook_to"])
+                rook_from_x, rook_from_y = self._square_center(
+                    *rook_from_view, left, top, square
+                )
+                rook_to_x, rook_to_y = self._square_center(
+                    *rook_to_view, left, top, square
+                )
+                rook_x = rook_from_x + (rook_to_x - rook_from_x) * progress
+                rook_y = rook_from_y + (rook_to_y - rook_from_y) * progress
+                self._draw_piece_at(
+                    painter,
+                    anim["rook_piece"],
+                    rook_x,
+                    rook_y,
+                    square * 0.92,
+                )
+
+        for index, move in enumerate(self.hint_moves[: len(HINT_COLORS)]):
+            self._draw_hint_arrow(
+                painter,
+                left,
+                top,
+                square,
+                move,
+                HINT_COLORS[index],
+                1.0 - index * 0.18,
+            )
+
+        if (
+            self._dragging
+            and self._drag_piece is not None
+            and self._drag_pos is not None
+        ):
+            self._draw_piece_at(
+                painter,
+                self._drag_piece,
+                self._drag_pos.x(),
+                self._drag_pos.y(),
+                square * 0.92,
+                opacity=0.9,
+                scale=1.05,
+            )
+
+        if self.show_coordinates:
+            self._draw_coordinates(painter, left, top, square)
+
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor("#1b1a18"), max(2.0, square * 0.035)))
+        painter.drawRect(
+            QRectF(left, top, square * 8, square * 8).adjusted(-1, -1, 1, 1)
+        )
+
+    @staticmethod
+    def _square_center(
+        row: int, col: int, left: float, top: float, square: float
+    ) -> tuple[float, float]:
+        return left + (col + 0.5) * square, top + (row + 0.5) * square
+
+    def _draw_piece_at(
+        self,
+        painter: QPainter,
+        piece: str,
+        center_x: float,
+        center_y: float,
+        logical_size: float,
+        opacity: float = 1.0,
+        scale: float = 1.0,
+    ) -> None:
+        pixmap = self._scaled_piece(piece, logical_size)
+        painter.save()
+        painter.setOpacity(opacity)
+        painter.translate(center_x, center_y)
+        painter.scale(scale, scale)
+        if pixmap is not None:
+            width = pixmap.width() / pixmap.devicePixelRatio()
+            height = pixmap.height() / pixmap.devicePixelRatio()
+            painter.drawPixmap(QPointF(-width / 2, -height / 2), pixmap)
+        else:
+            font = QFont(self.font())
+            font.setPixelSize(max(12, int(logical_size * 0.6)))
+            font.setBold(True)
+            painter.setFont(font)
+            color = QColor("#fafafa") if piece.isupper() else QColor("#1a1a1a")
+            painter.setPen(color)
+            painter.drawText(
+                QRectF(-logical_size / 2, -logical_size / 2, logical_size, logical_size),
+                Qt.AlignmentFlag.AlignCenter,
+                piece.upper(),
+            )
+        painter.restore()
+
+    def _draw_hint_arrow(
+        self,
+        painter: QPainter,
+        left: float,
+        top: float,
+        square: float,
+        move: Move,
+        color: QColor,
+        scale: float = 1.0,
+    ) -> None:
+        from_view = self._board_to_view(move.from_row, move.from_col)
+        to_view = self._board_to_view(move.to_row, move.to_col)
+        start_x, start_y = self._square_center(
+            *from_view, left, top, square
+        )
+        end_x, end_y = self._square_center(*to_view, left, top, square)
+        dx = end_x - start_x
+        dy = end_y - start_y
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return
+
+        ux, uy = dx / length, dy / length
+        tip_x, tip_y = end_x, end_y
+        head_length = square * 0.28 * scale
+        head_width = square * 0.20 * scale
+        base_x = tip_x - ux * head_length
+        base_y = tip_y - uy * head_length
+        perp_x, perp_y = -uy, ux
+
+        painter.save()
+        pen = QPen(color, max(3.0, square * 0.075 * scale))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(QPointF(start_x, start_y), QPointF(base_x, base_y))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawPolygon(
+            QPolygonF(
+                [
+                    QPointF(tip_x, tip_y),
+                    QPointF(
+                        base_x + perp_x * head_width / 2,
+                        base_y + perp_y * head_width / 2,
+                    ),
+                    QPointF(
+                        base_x - perp_x * head_width / 2,
+                        base_y - perp_y * head_width / 2,
+                    ),
+                ]
+            )
+        )
+        painter.restore()
+
+    def _draw_coordinates(
+        self, painter: QPainter, left: float, top: float, square: float
+    ) -> None:
+        if square < 36:
+            return
+        font = QFont(self.font())
+        font.setPixelSize(max(9, int(square * 0.16)))
+        font.setBold(True)
+        painter.setFont(font)
+
+        for view_col in range(8):
+            board_col = 7 - view_col if self.flipped else view_col
+            rect = QRectF(
+                left + view_col * square, top + 7 * square, square, square
+            )
+            color = (
+                self.dark_color if (7 + view_col) % 2 == 0 else self.light_color
+            )
+            painter.setPen(color)
+            painter.drawText(
+                rect.adjusted(0, 0, -square * 0.08, -square * 0.04),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+                chr(ord("a") + board_col),
+            )
+
+        for view_row in range(8):
+            board_row = 7 - view_row if self.flipped else view_row
+            rect = QRectF(left, top + view_row * square, square, square)
+            color = (
+                self.dark_color if view_row % 2 == 0 else self.light_color
+            )
+            painter.setPen(color)
+            painter.drawText(
+                rect.adjusted(square * 0.08, square * 0.04, 0, 0),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                str(8 - board_row),
+            )
+
+
+# ---- fen_dialog.py ----
+
+from typing import Optional
+
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+
+class FenDialog(QDialog):
+    def __init__(
+        self,
+        fen: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.fen = fen
+        self.setWindowTitle("FEN 局面")
+        self.setMinimumWidth(560)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        hint = QLabel(
+            "粘贴或编辑标准 6 字段 FEN 后点击“加载”。加载会从该局面开始新对局。"
+        )
+        hint.setObjectName("HintLabel")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        self.fen_edit = QLineEdit(fen)
+        self.fen_edit.setPlaceholderText(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        )
+        self.fen_edit.selectAll()
+        root.addWidget(self.fen_edit)
+
+        button_row = QHBoxLayout()
+        self.copy_button = QPushButton("复制当前 FEN")
+        self.paste_button = QPushButton("从剪贴板粘贴")
+        self.load_button = QPushButton("加载")
+        self.cancel_button = QPushButton("取消")
+        self.copy_button.clicked.connect(self._copy_current)
+        self.paste_button.clicked.connect(self._paste_clipboard)
+        self.load_button.clicked.connect(self._load)
+        self.cancel_button.clicked.connect(self.reject)
+        button_row.addWidget(self.copy_button)
+        button_row.addWidget(self.paste_button)
+        button_row.addStretch()
+        button_row.addWidget(self.cancel_button)
+        button_row.addWidget(self.load_button)
+        root.addLayout(button_row)
+
+        self.setStyleSheet(
+            """
+            QDialog { background-color: #262421; }
+            QLabel { color: #e8ddc7; font-size: 13px; }
+            QLabel#HintLabel { color: #8d877d; font-size: 12px; }
+            QLineEdit {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 4px;
+                padding: 7px;
+                font-family: Consolas, "Courier New", monospace;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #4a463f; }
+            """
+        )
+
+    def _copy_current(self) -> None:
+        QApplication.clipboard().setText(self.fen_edit.text().strip())
+
+    def _paste_clipboard(self) -> None:
+        text = QApplication.clipboard().text().strip()
+        if text:
+            self.fen_edit.setText(" ".join(text.split()))
+
+    def _load(self) -> None:
+        text = " ".join(self.fen_edit.text().split())
+        if not text:
+            QMessageBox.warning(self, "FEN 无效", "请输入 FEN。")
+            return
+        try:
+            ChessGame().load_fen(text)
+        except ValueError as exc:
+            QMessageBox.warning(self, "FEN 无效", str(exc))
+            return
+        self.fen = text
+        self.accept()
+
+
+# ---- coach_ui.py ----
+
+import hashlib
+import threading
+from typing import Optional
+
+from PyQt6.QtCore import QSettings, Qt, pyqtSignal
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+
+KEYRING_SERVICE = "chess-pyqt-deepseek"
+KEYRING_USER = "api_key"
+
+
+def _keyring_get() -> str:
+    try:
+        import keyring
+    except ImportError:
+        return ""
+    try:
+        return (keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip()
+    except Exception:
+        return ""
+
+
+def _keyring_set(value: str) -> bool:
+    try:
+        import keyring
+    except ImportError:
+        return False
+    try:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, value)
+        return True
+    except Exception:
+        return False
+
+
+def _keyring_delete() -> None:
+    try:
+        import keyring
+    except ImportError:
+        return
+    try:
+        keyring.delete_password(KEYRING_SERVICE, KEYRING_USER)
+    except Exception:
+        pass
+
+
+def _format_eval(cp: Optional[int]) -> str:
+    if cp is None:
+        return "未知"
+    return f"{cp / 100:+.2f}"
+
+
+def _move_label(ply: int, san: str) -> str:
+    number = (ply + 1) // 2
+    side = "白" if ply % 2 == 1 else "黑"
+    return f"{number}.{side} {san}"
+
+
+class CoachConfigDialog(QDialog):
+    def __init__(
+        self,
+        settings: QSettings,
+        initial_key: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.settings = settings
+        self.api_key = ""
+        self.base_url = str(
+            settings.value("coach_base_url", DEFAULT_BASE_URL)
+        )
+        self.model = str(settings.value("coach_model", DEFAULT_MODEL))
+
+        self.setWindowTitle("配置 DeepSeek")
+        self.setModal(True)
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+
+        self.key_edit = QLineEdit(initial_key)
+        self.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.key_edit.setPlaceholderText("留空则使用 DEEPSEEK_API_KEY 环境变量")
+        form.addRow("API Key", self.key_edit)
+
+        self.base_edit = QLineEdit(self.base_url)
+        form.addRow("Base URL", self.base_edit)
+
+        self.model_edit = QLineEdit(self.model)
+        form.addRow("模型", self.model_edit)
+        layout.addLayout(form)
+
+        self.remember_check = QCheckBox("记住 API Key")
+        self.remember_check.setChecked(
+            bool(settings.value("coach_remember_key", 0))
+            and bool(initial_key)
+        )
+        layout.addWidget(self.remember_check)
+
+        warning = QLabel(
+            "勾选后优先保存到系统凭据管理器（Windows Credential Manager）。"
+            "如果系统凭据管理器不可用，会退回到本地 QSettings 明文保存。"
+            "不希望保存时保持未勾选，仅本次运行使用。"
+        )
+        warning.setWordWrap(True)
+        warning.setObjectName("HintLabel")
+        layout.addWidget(warning)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        save_button = buttons.button(QDialogButtonBox.StandardButton.Save)
+        cancel_button = buttons.button(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        if save_button is not None:
+            save_button.setText("保存")
+        if cancel_button is not None:
+            cancel_button.setText("取消")
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self.setStyleSheet(
+            """
+            QDialog { background-color: #262421; }
+            QLabel { color: #e8ddc7; font-size: 13px; }
+            QLabel#HintLabel { color: #8d877d; font-size: 12px; }
+            QLineEdit {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QCheckBox { color: #e8ddc7; font-size: 13px; }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 6px 14px;
+            }
+            """
+        )
+
+    def _save(self) -> None:
+        self.api_key = self.key_edit.text().strip()
+        self.base_url = (
+            self.base_edit.text().strip() or DEFAULT_BASE_URL
+        )
+        self.model = self.model_edit.text().strip() or DEFAULT_MODEL
+        remember = self.remember_check.isChecked()
+
+        self.settings.setValue("coach_base_url", self.base_url)
+        self.settings.setValue("coach_model", self.model)
+        self.settings.setValue("coach_remember_key", int(remember))
+        if remember and self.api_key:
+            if _keyring_set(self.api_key):
+                self.settings.remove("coach_api_key")
+            else:
+                self.settings.setValue("coach_api_key", self.api_key)
+        else:
+            _keyring_delete()
+            self.settings.remove("coach_api_key")
+        self.settings.sync()
+        self.accept()
+
+
+class CoachDialog(QDialog):
+    resultReady = pyqtSignal(int, str, str)
+    streamChunk = pyqtSignal(int, str)
+
+    def __init__(
+        self,
+        settings: QSettings,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.settings = settings
+        self._session_key = ""
+        self._token = 0
+        self._busy = False
+        self._pending_local = ""
+        self._pending_cache_key = ""
+        self._stream_text = ""
+        self._cache: dict[str, str] = {}
+
+        self.setWindowTitle("教练模式")
+        self.setModal(False)
+        self.setMinimumSize(620, 580)
+        self.resize(680, 660)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        top_row = QHBoxLayout()
+        self.config_button = QPushButton("配置 DeepSeek")
+        self.config_button.clicked.connect(self._open_config)
+        top_row.addWidget(self.config_button)
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("StatusLabel")
+        self.status_label.setWordWrap(True)
+        top_row.addWidget(self.status_label, 1)
+        root.addLayout(top_row)
+
+        hint = QLabel(
+            "教练会结合 Stockfish 的评估/标注和 DeepSeek 的文本分析，"
+            "提供逐着点评、漏着解释和练习建议。"
+            "生成 DeepSeek 报告时会发送棋谱、FEN、评估和标注，"
+            "不包含本机文件或个人信息。"
+        )
+        hint.setObjectName("HintLabel")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        scope_row = QHBoxLayout()
+        scope_row.addWidget(QLabel("复盘范围"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("全部对局", "all")
+        self.scope_combo.addItem("开局（前 10 回合）", "opening")
+        self.scope_combo.addItem("中局（11-40 回合）", "middlegame")
+        self.scope_combo.addItem("残局（40 回合后）", "endgame")
+        scope_row.addWidget(self.scope_combo, 1)
+        root.addLayout(scope_row)
+
+        action_row = QHBoxLayout()
+        self.last_button = QPushButton("点评最后一手")
+        self.full_button = QPushButton("复盘整局")
+        self.copy_button = QPushButton("复制报告")
+        self.clear_button = QPushButton("清空")
+        self.last_button.clicked.connect(self._review_last_move)
+        self.full_button.clicked.connect(self._review_full_game)
+        self.copy_button.clicked.connect(self._copy_report)
+        self.clear_button.clicked.connect(self._clear_report)
+        for button in (
+            self.last_button,
+            self.full_button,
+            self.copy_button,
+            self.clear_button,
+        ):
+            action_row.addWidget(button)
+        root.addLayout(action_row)
+
+        self.report = QTextBrowser()
+        self.report.setObjectName("CoachReport")
+        self.report.setReadOnly(True)
+        self.report.setOpenExternalLinks(False)
+        self.report.setPlaceholderText(
+            "点击“点评最后一手”或“复盘整局”开始。"
+        )
+        root.addWidget(self.report, 1)
+
+        note = QLabel(
+            "报告仅用于学习参考；深色/浅色标注来自本地 Stockfish 快速评估。"
+        )
+        note.setObjectName("HintLabel")
+        note.setWordWrap(True)
+        root.addWidget(note)
+
+        self.resultReady.connect(self._on_result)
+        self.streamChunk.connect(self._on_stream_chunk)
+        self._update_status()
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            """
+            QDialog { background-color: #262421; }
+            QLabel { color: #e8ddc7; font-size: 13px; }
+            QLabel#HintLabel { color: #8d877d; font-size: 12px; }
+            QLabel#StatusLabel { color: #d8b26a; font-size: 13px; }
+            QTextBrowser#CoachReport {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #4a463f; }
+            QPushButton:disabled { color: #77716a; border-color: #3a3732; }
+            """
+        )
+
+    def _saved_key(self) -> str:
+        stored = _keyring_get()
+        if stored:
+            return stored
+        return str(self.settings.value("coach_api_key", "")).strip()
+
+    def _base_url(self) -> str:
+        return str(
+            self.settings.value("coach_base_url", DEFAULT_BASE_URL)
+        ).strip() or DEFAULT_BASE_URL
+
+    def _model(self) -> str:
+        return str(
+            self.settings.value("coach_model", DEFAULT_MODEL)
+        ).strip() or DEFAULT_MODEL
+
+    def _effective_key(self) -> str:
+        return self._session_key or self._saved_key() or env_api_key()
+
+    def _update_status(self) -> None:
+        saved_key = self._saved_key()
+        key = self._session_key or saved_key or env_api_key()
+        if key:
+            if self._session_key:
+                source = "本次会话"
+            elif saved_key:
+                source = "本地设置"
+            else:
+                source = "环境变量"
+            self.status_label.setText(
+                f"DeepSeek：已配置（{self._model()}，密钥来自{source}）"
+            )
+        else:
+            self.status_label.setText(
+                "DeepSeek：未配置。可只使用本地 Stockfish 摘要，"
+                "或点击“配置 DeepSeek”。"
+            )
+
+    def _open_config(self) -> None:
+        initial = self._session_key or self._saved_key()
+        dialog = CoachConfigDialog(self.settings, initial, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._session_key = dialog.api_key
+            self._update_status()
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        for button in (
+            self.config_button,
+            self.last_button,
+            self.full_button,
+            self.clear_button,
+        ):
+            button.setEnabled(not busy)
+        if busy:
+            self.status_label.setText("正在生成教练报告…")
+
+    def _clear_report(self) -> None:
+        self.report.clear()
+
+    def _copy_report(self) -> None:
+        text = self.report.toPlainText()
+        if text:
+            QApplication.clipboard().setText(text)
+
+    def _coach_context(self) -> dict:
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "coach_context"):
+            return parent.coach_context()
+        return {}
+
+    def _review_last_move(self) -> None:
+        if self._busy:
+            return
+        context = self._coach_context()
+        history = context.get("history_sans", [])
+        if not history:
+            self.report.setMarkdown("还没有可点评的着法。")
+            return
+        local = self._local_last_move_report(context)
+        prompt = self._last_move_prompt(context)
+        self._start_request(prompt, local)
+
+    def _review_full_game(self) -> None:
+        if self._busy:
+            return
+        context = self._coach_context()
+        if not context.get("sans"):
+            self.report.setMarkdown("还没有可复盘的棋谱。")
+            return
+        local = self._local_full_report(context)
+        prompt = self._full_game_prompt(context)
+        self._start_request(prompt, local)
+
+    def _start_request(self, prompt: str, local_report: str) -> None:
+        key = self._effective_key()
+        if not key:
+            self._pending_local = ""
+            self.report.setMarkdown(local_report)
+            self.status_label.setText(
+                "DeepSeek 未配置，已生成本地 Stockfish 摘要。"
+            )
+            return
+
+        model = self._model()
+        cache_key = hashlib.sha256(
+            f"{model}|{prompt}".encode("utf-8")
+        ).hexdigest()
+        cached = self._cache.get(cache_key)
+        if cached:
+            self.report.setMarkdown(cached)
+            self.status_label.setText("已使用缓存的教练报告。")
+            return
+
+        self._pending_local = local_report
+        self._pending_cache_key = cache_key
+        self._stream_text = ""
+        self._token += 1
+        token = self._token
+        self._set_busy(True)
+        self.report.setMarkdown("正在生成教练报告…")
+        base_url = self._base_url()
+
+        def worker() -> None:
+            pieces: list[str] = []
+            try:
+                for chunk in stream_deepseek_coach(
+                    prompt, key, base_url=base_url, model=model
+                ):
+                    if not chunk:
+                        continue
+                    pieces.append(chunk)
+                    self.streamChunk.emit(token, chunk)
+            except Exception as exc:
+                self.resultReady.emit(
+                    token,
+                    "".join(pieces),
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return
+            self.resultReady.emit(token, "".join(pieces), "")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_stream_chunk(self, token: int, chunk: str) -> None:
+        if token != self._token or not self._busy:
+            return
+        self._stream_text += chunk
+        self.report.setMarkdown(self._stream_text)
+        scrollbar = self.report.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def _on_result(self, token: int, text: str, error: str) -> None:
+        if token != self._token:
+            return
+        self._set_busy(False)
+        self._stream_text = ""
+        if error:
+            partial = text.strip()
+            if partial:
+                body = (
+                    f"### DeepSeek 请求中断\n\n`{error}`\n\n"
+                    f"{partial}\n\n---\n\n{self._pending_local}"
+                )
+            else:
+                body = (
+                    f"### DeepSeek 请求失败\n\n`{error}`\n\n"
+                    f"---\n\n{self._pending_local}"
+                )
+            self.report.setMarkdown(body)
+            self.status_label.setText("DeepSeek 请求失败，已显示本地摘要。")
+        else:
+            self.report.setMarkdown(text)
+            if self._pending_cache_key and text:
+                self._cache[self._pending_cache_key] = text
+            self.status_label.setText("教练报告已生成。")
+        self._pending_local = ""
+        self._pending_cache_key = ""
+
+    @staticmethod
+    def _annotation_lines(
+        context: dict,
+        min_ply: int = 1,
+        max_ply: int = 10**9,
+    ) -> list[str]:
+        sans = context.get("sans", [])
+        annotations = context.get("annotations", {})
+        evals = context.get("evals", {})
+        lines: list[str] = []
+        for ply in sorted(annotations):
+            if not min_ply <= ply <= max_ply:
+                continue
+            if not 1 <= ply <= len(sans):
+                continue
+            san = sans[ply - 1]
+            symbol = annotations[ply]
+            value = _format_eval(evals.get(ply))
+            lines.append(
+                f"- {_move_label(ply, san)} {symbol}（评估 {value}）"
+            )
+        return lines
+
+    def _scope_range(self) -> tuple[int, int, str]:
+        key = self.scope_combo.currentData()
+        if key == "opening":
+            return 1, 20, "开局（前 10 回合）"
+        if key == "middlegame":
+            return 21, 80, "中局（11-40 回合）"
+        if key == "endgame":
+            return 81, 10**9, "残局（40 回合后）"
+        return 1, 10**9, "全部对局"
+
+    def _full_game_prompt(self, context: dict) -> str:
+        min_ply, max_ply, scope_label = self._scope_range()
+        annotations = self._annotation_lines(context, min_ply, max_ply)
+        annotation_text = "\n".join(annotations) or "无"
+        scope_rule = (
+            ""
+            if scope_label == "全部对局"
+            else f"只重点点评“{scope_label}”范围内的着法，其他阶段可以略过。\n"
+        )
+        return (
+            "请复盘下面这局国际象棋。\n\n"
+            f"结果：{context.get('result') or '进行中'}\n"
+            f"分析范围：{scope_label}\n\n"
+            f"PGN：\n{context.get('pgn', '')}\n\n"
+            "已有的 Stockfish 标注（评估为白方视角，单位兵）：\n"
+            f"{annotation_text}\n\n"
+            "要求：\n"
+            "1. 按回合做简要逐着点评，优先解释被标注的失误/精彩着法；"
+            "没有被标注的普通着法可以合并概括。\n"
+            "2. 指出关键漏着、转折点和更好的候选着法。\n"
+            "3. 给出 3 条具体、可执行的训练建议。\n"
+            "4. 不要编造未提供的引擎评估；控制篇幅，条理清晰。\n"
+            f"{scope_rule}"
+        )
+
+    def _last_move_prompt(self, context: dict) -> str:
+        return (
+            "请点评下面这局棋的最后一手。\n\n"
+            f"最后一手：{context.get('last_san')}\n"
+            f"Stockfish 标注：{context.get('last_annotation') or '无'}\n"
+            f"走前评估（白方视角）：{_format_eval(context.get('eval_before'))}\n"
+            f"走后评估（白方视角）：{_format_eval(context.get('eval_after'))}\n"
+            f"当前 FEN：{context.get('current_fen')}\n\n"
+            f"棋谱：{context.get('pgn', '')}\n\n"
+            "要求：解释这步棋的意图、优点/问题；如果评估下降或标注为失误，"
+            "说明漏着原因并给出更好的候选着法；最后给一条练习建议。"
+            "不要编造未提供的评估。"
+        )
+
+    def _local_full_report(self, context: dict) -> str:
+        annotations = self._annotation_lines(context)
+        result = context.get("result") or "进行中"
+        if annotations:
+            annotation_text = "\n".join(annotations)
+            advice = (
+                "### 推荐练习\n"
+                "- 逐着复盘上面列出的标注着法，先用自己计算候选着法，"
+                "再用 Stockfish 验证。\n"
+                "- 重点练习战术识别和计算深度，尤其是评估下降超过 "
+                "0.5 兵的回合。\n"
+                "- 下一局打开提示/评估，在关键分岔口停一下再落子。"
+            )
+        else:
+            annotation_text = "本局暂无可用的 Stockfish 标注。"
+            advice = (
+                "### 推荐练习\n"
+                "- 打开提示/评估走完一局，让软件记录关键失误。\n"
+                "- 练习战术题和残局基本功。\n"
+                "- 配置 DeepSeek API 后可获得逐着文字讲解。"
+            )
+        return (
+            f"## 本地教练摘要\n\n结果：**{result}**\n\n"
+            f"### Stockfish 标注\n{annotation_text}\n\n{advice}\n\n"
+            "> 这是本地摘要。配置 DeepSeek API 后可生成更详细的逐着点评。"
+        )
+
+    def _local_last_move_report(self, context: dict) -> str:
+        eval_before = context.get("eval_before")
+        eval_after = context.get("eval_after")
+        symbol = context.get("last_annotation") or "无"
+        return (
+            "## 本地教练摘要\n\n"
+            f"最后一手：**{context.get('last_san')}**\n\n"
+            f"Stockfish 标注：**{symbol}**\n\n"
+            f"走前评估（白方视角）：{_format_eval(eval_before)}\n\n"
+            f"走后评估（白方视角）：{_format_eval(eval_after)}\n\n"
+            "建议：把这步棋和更好的候选着法放在一起对比，"
+            "先独立计算一遍再用引擎验证。\n\n"
+            "> 配置 DeepSeek API 后可获得针对这步棋的详细解释和练习建议。"
+        )
+
+    def closeEvent(self, event) -> None:
+        event.ignore()
+        self.hide()
+
+
+# ---- lan_ui.py ----
+
+import time
+from typing import Optional
+
+from PyQt6.QtCore import QSettings, Qt, QTimer
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+
+class NetworkDialog(QDialog):
+    def __init__(
+        self, manager: LanManager, parent: Optional[QWidget] = None
+    ) -> None:
+        super().__init__(parent)
+        self.manager = manager
+        self._state = "idle"
+        self._is_host = False
+        self._http_address = ""
+        self._tcp_address = ""
+        self._ws_address = ""
+        self._rooms: dict[tuple[str, int], dict] = {}
+        self.settings = QSettings("ChessPyQt", "Chess")
+        self.discovery = LanDiscovery(self)
+        self.discovery.roomFound.connect(self._on_room_found)
+        self.discovery.errorOccurred.connect(self._on_discovery_error)
+        self._room_timer = QTimer(self)
+        self._room_timer.setInterval(3000)
+        self._room_timer.timeout.connect(self._prune_rooms)
+
+        self.setWindowTitle("局域网联机")
+        self.setModal(False)
+        self.setMinimumSize(540, 620)
+        self.resize(560, 660)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        hint = QLabel(
+            "房主执白，加入方执黑。连接后自动升级为 WebSocket 协议；"
+            "关闭本窗口不会断开连接。\n"
+            "请确保双方在同一局域网，并允许防火墙放行所选端口"
+            "（自动发现还需 UDP 45876）。\n"
+            "房间密码只用于握手校验，当前连接未启用 TLS 加密。"
+        )
+        hint.setObjectName("HintLabel")
+        hint.setWordWrap(True)
+        root.addWidget(hint)
+
+        host_group = QGroupBox("发起联机")
+        host_layout = QVBoxLayout(host_group)
+        port_row = QHBoxLayout()
+        port_row.addWidget(QLabel("端口"))
+        self.port_spin = QSpinBox()
+        self.port_spin.setRange(1024, 65535)
+        self.port_spin.setValue(8765)
+        port_row.addWidget(self.port_spin, 1)
+        self.host_button = QPushButton("创建房间")
+        self.host_button.clicked.connect(self._start_host)
+        port_row.addWidget(self.host_button)
+        host_layout.addLayout(port_row)
+
+        time_row = QHBoxLayout()
+        time_row.addWidget(QLabel("局时（分钟）"))
+        self.minutes_spin = QSpinBox()
+        self.minutes_spin.setRange(1, 180)
+        self.minutes_spin.setValue(
+            max(
+                1,
+                min(
+                    180,
+                    int(self.settings.value("online_clock_minutes", 10)),
+                ),
+            )
+        )
+        time_row.addWidget(self.minutes_spin)
+        time_row.addWidget(QLabel("加秒（秒/步）"))
+        self.increment_spin = QSpinBox()
+        self.increment_spin.setRange(0, 60)
+        self.increment_spin.setValue(
+            max(
+                0,
+                min(
+                    60,
+                    int(self.settings.value("online_clock_increment", 0)),
+                ),
+            )
+        )
+        time_row.addWidget(self.increment_spin)
+        time_row.addStretch()
+        host_layout.addLayout(time_row)
+        time_hint = QLabel("联机棋钟由房主设置，连接方自动同步。")
+        time_hint.setObjectName("HintLabel")
+        host_layout.addWidget(time_hint)
+
+        self.host_password_edit = QLineEdit()
+        self.host_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.host_password_edit.setPlaceholderText(
+            "可选房间密码（留空则不设密码）"
+        )
+        host_layout.addWidget(self.host_password_edit)
+
+        self.spectator_checkbox = QCheckBox("允许观战（端口 + 1）")
+        self.spectator_checkbox.setChecked(
+            bool(int(self.settings.value("allow_spectators", 0)))
+        )
+        self.spectator_checkbox.setToolTip(
+            "开启后，其他设备可连接房主端口的下一个端口观战"
+        )
+        host_layout.addWidget(self.spectator_checkbox)
+
+        address_row = QHBoxLayout()
+        self.address_display = QLineEdit()
+        self.address_display.setReadOnly(True)
+        self.address_display.setPlaceholderText("创建房间后显示联机地址")
+        address_row.addWidget(self.address_display, 1)
+        self.copy_button = QPushButton("复制")
+        self.copy_button.setEnabled(False)
+        self.copy_button.clicked.connect(self._copy_address)
+        address_row.addWidget(self.copy_button)
+        host_layout.addLayout(address_row)
+
+        self.tcp_label = QLabel("")
+        self.tcp_label.setObjectName("HintLabel")
+        self.tcp_label.setWordWrap(True)
+        self.tcp_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        host_layout.addWidget(self.tcp_label)
+        root.addWidget(host_group)
+
+        connect_group = QGroupBox("加入联机")
+        connect_layout = QVBoxLayout(connect_group)
+        address_row = QHBoxLayout()
+        self.address_input = QLineEdit()
+        self.address_input.setPlaceholderText(
+            "http://192.168.1.10:8765 或 tcp://192.168.1.10:8765"
+        )
+        self.address_input.returnPressed.connect(self._start_connect)
+        address_row.addWidget(self.address_input, 1)
+        self.connect_button = QPushButton("连接")
+        self.connect_button.clicked.connect(self._start_connect)
+        address_row.addWidget(self.connect_button)
+        connect_layout.addLayout(address_row)
+
+        self.join_password_edit = QLineEdit()
+        self.join_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.join_password_edit.setPlaceholderText(
+            "房间密码（如果房主设置了密码）"
+        )
+        connect_layout.addWidget(self.join_password_edit)
+
+        discovery_row = QHBoxLayout()
+        self.search_button = QPushButton("搜索局域网房间")
+        self.search_button.clicked.connect(self._toggle_discovery)
+        discovery_row.addWidget(self.search_button)
+        self.room_combo = QComboBox()
+        self.room_combo.setEnabled(False)
+        self.room_combo.addItem("未发现房间", None)
+        self.room_combo.currentIndexChanged.connect(self._on_room_selected)
+        self.room_combo.activated.connect(self._on_room_selected)
+        discovery_row.addWidget(self.room_combo, 1)
+        connect_layout.addLayout(discovery_row)
+        root.addWidget(connect_group)
+
+        self.status_label = QLabel("未连接")
+        self.status_label.setObjectName("StatusLabel")
+        self.status_label.setWordWrap(True)
+        root.addWidget(self.status_label)
+
+        chat_group = QGroupBox("聊天")
+        chat_layout = QVBoxLayout(chat_group)
+        self.chat_log = QPlainTextEdit()
+        self.chat_log.setReadOnly(True)
+        self.chat_log.setPlaceholderText("连接后可以聊天")
+        chat_layout.addWidget(self.chat_log, 1)
+        chat_row = QHBoxLayout()
+        self.chat_input = QLineEdit()
+        self.chat_input.setPlaceholderText("输入聊天内容，回车发送")
+        self.chat_input.returnPressed.connect(self._send_chat)
+        chat_row.addWidget(self.chat_input, 1)
+        self.send_button = QPushButton("发送")
+        self.send_button.clicked.connect(self._send_chat)
+        chat_row.addWidget(self.send_button)
+        chat_layout.addLayout(chat_row)
+
+        quick_row = QHBoxLayout()
+        quick_row.setSpacing(6)
+        self.quick_buttons: list[QPushButton] = []
+        for text in ("你好", "好棋！", "请稍等", "再来一局"):
+            button = QPushButton(text)
+            button.setObjectName("QuickButton")
+            button.setEnabled(False)
+            button.clicked.connect(
+                lambda _checked=False, value=text: self._send_quick(value)
+            )
+            quick_row.addWidget(button)
+            self.quick_buttons.append(button)
+        chat_layout.addLayout(quick_row)
+        root.addWidget(chat_group, 1)
+
+        self.disconnect_button = QPushButton("断开连接")
+        self.disconnect_button.clicked.connect(self._disconnect)
+        root.addWidget(self.disconnect_button)
+
+        self.manager.hosting.connect(self._on_hosting)
+        self.manager.connected.connect(self._on_connected)
+        self.manager.disconnected.connect(self._on_disconnected)
+        self.manager.errorOccurred.connect(self._on_error)
+        self.manager.messageReceived.connect(self._on_message)
+
+        self._set_idle()
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            """
+            QDialog { background-color: #262421; }
+            QLabel { color: #e8ddc7; font-size: 13px; }
+            QLabel#HintLabel { color: #8d877d; font-size: 12px; }
+            QLabel#StatusLabel { color: #d8b26a; font-size: 13px; }
+            QGroupBox {
+                color: #f0e6d2;
+                border: 1px solid #3d3933;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 8px;
+                font-size: 13px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 4px;
+                color: #c9c1b4;
+            }
+            QLineEdit, QSpinBox, QPlainTextEdit {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 4px;
+                padding: 5px;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+            QPushButton:hover { background-color: #4a463f; }
+            QPushButton:pressed { background-color: #2f2c28; }
+            QPushButton:disabled { color: #77716a; border-color: #3a3732; }
+            QPushButton#QuickButton {
+                padding: 3px 6px;
+                font-size: 12px;
+            }
+            """
+        )
+
+    def _set_idle(self) -> None:
+        self._state = "idle"
+        self.port_spin.setEnabled(True)
+        self.host_button.setEnabled(True)
+        self.address_input.setEnabled(True)
+        self.connect_button.setEnabled(True)
+        self.disconnect_button.setEnabled(False)
+        self.disconnect_button.setText("断开连接")
+        self.copy_button.setEnabled(False)
+        self.search_button.setEnabled(True)
+        self.room_combo.setEnabled(bool(self._rooms))
+        self.minutes_spin.setEnabled(True)
+        self.increment_spin.setEnabled(True)
+        self.host_password_edit.setEnabled(True)
+        self.join_password_edit.setEnabled(True)
+        self.spectator_checkbox.setEnabled(True)
+        self.chat_input.setEnabled(False)
+        self.send_button.setEnabled(False)
+        self._set_quick_enabled(False)
+        self.status_label.setText("未连接")
+        if self.isVisible() and not self.discovery.is_running():
+            self._start_discovery()
+
+    def _set_waiting(self) -> None:
+        self._state = "hosting"
+        self.port_spin.setEnabled(False)
+        self.host_button.setEnabled(False)
+        self.address_input.setEnabled(False)
+        self.connect_button.setEnabled(False)
+        self.disconnect_button.setEnabled(True)
+        self.disconnect_button.setText("取消房间")
+        self.search_button.setEnabled(False)
+        self.room_combo.setEnabled(False)
+        self.minutes_spin.setEnabled(False)
+        self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
+        self._stop_discovery()
+        self.chat_input.setEnabled(False)
+        self.send_button.setEnabled(False)
+        self._set_quick_enabled(False)
+        self.status_label.setText("等待对方连接…")
+
+    def _set_connecting(self) -> None:
+        self._state = "connecting"
+        self.port_spin.setEnabled(False)
+        self.host_button.setEnabled(False)
+        self.address_input.setEnabled(False)
+        self.connect_button.setEnabled(False)
+        self.disconnect_button.setEnabled(True)
+        self.disconnect_button.setText("取消连接")
+        self.copy_button.setEnabled(False)
+        self.search_button.setEnabled(False)
+        self.room_combo.setEnabled(False)
+        self.minutes_spin.setEnabled(False)
+        self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
+        self._stop_discovery()
+        self.chat_input.setEnabled(False)
+        self.send_button.setEnabled(False)
+        self._set_quick_enabled(False)
+        self.status_label.setText("正在连接…")
+
+    def _set_connected(self, is_host: bool) -> None:
+        self._state = "connected"
+        self._is_host = is_host
+        self.port_spin.setEnabled(False)
+        self.host_button.setEnabled(False)
+        self.address_input.setEnabled(False)
+        self.connect_button.setEnabled(False)
+        self.disconnect_button.setEnabled(True)
+        self.disconnect_button.setText("断开连接")
+        self.search_button.setEnabled(False)
+        self.room_combo.setEnabled(False)
+        self.minutes_spin.setEnabled(False)
+        self.increment_spin.setEnabled(False)
+        self.host_password_edit.setEnabled(False)
+        self.join_password_edit.setEnabled(False)
+        self.spectator_checkbox.setEnabled(False)
+        self._stop_discovery()
+        self.chat_input.setEnabled(True)
+        self.send_button.setEnabled(True)
+        self._set_quick_enabled(True)
+        side = "白" if is_host else "黑"
+        self.status_label.setText(f"已连接（你执{side}）")
+        self.copy_button.setEnabled(bool(self._http_address))
+        self.chat_input.setFocus()
+
+    def current_time_control(self) -> tuple[int, int]:
+        return (
+            self.minutes_spin.value() * 60,
+            self.increment_spin.value(),
+        )
+
+    def spectator_enabled(self) -> bool:
+        return self.spectator_checkbox.isChecked()
+
+    def host_port(self) -> int:
+        return self.port_spin.value()
+
+    def host_password(self) -> str:
+        return self.host_password_edit.text()
+
+    def apply_time_control(self, base_seconds: int, increment: int) -> None:
+        self.minutes_spin.blockSignals(True)
+        self.increment_spin.blockSignals(True)
+        self.minutes_spin.setValue(max(1, int(base_seconds) // 60))
+        self.increment_spin.setValue(max(0, min(60, int(increment))))
+        self.minutes_spin.blockSignals(False)
+        self.increment_spin.blockSignals(False)
+
+    def _start_host(self) -> None:
+        if self._state != "idle":
+            return
+        self.settings.setValue(
+            "online_clock_minutes", self.minutes_spin.value()
+        )
+        self.settings.setValue(
+            "online_clock_increment", self.increment_spin.value()
+        )
+        self.settings.setValue(
+            "allow_spectators", int(self.spectator_checkbox.isChecked())
+        )
+        self.settings.sync()
+        self._stop_discovery()
+        password = self.host_password_edit.text()
+        if self.manager.host(self.port_spin.value(), password):
+            self._set_waiting()
+
+    def _start_connect(self) -> None:
+        if self._state != "idle":
+            return
+        address = self.address_input.text().strip()
+        if not address:
+            self._append_system("请输入联机地址")
+            return
+        self._stop_discovery()
+        password = self.join_password_edit.text()
+        if self.manager.connect(address, password):
+            self._set_connecting()
+
+    def _disconnect(self) -> None:
+        self.manager.disconnect()
+
+    def _on_hosting(self, http: str, tcp: str, ws: str) -> None:
+        self._http_address = http
+        self._tcp_address = tcp
+        self._ws_address = ws
+        self.address_display.setText(http)
+        self.copy_button.setEnabled(True)
+        self.tcp_label.setText(
+            f"TCP 地址：{tcp}\nWebSocket 地址：{ws}\n"
+            "对方输入其中任意一个地址即可。"
+        )
+        self._set_waiting()
+        self._append_system(f"房间已创建：{http}")
+
+    def _on_connected(self, is_host: bool) -> None:
+        if not self.manager.is_connected():
+            return
+        self._set_connected(is_host)
+        side = "白" if is_host else "黑"
+        self._append_system(f"WebSocket 已连接，你执{side}")
+        self._refresh_idle_controls()
+
+    def _on_disconnected(self, reason: str) -> None:
+        self._set_idle()
+        self._append_system(reason)
+
+    def _on_error(self, message: str) -> None:
+        if self._state == "connecting":
+            self._set_idle()
+        self.status_label.setText(message)
+        self._append_system(f"错误：{message}")
+
+    def _on_message(self, message: dict) -> None:
+        kind = message.get("type")
+        if kind == "chat":
+            text = str(message.get("text", ""))[:2000]
+            if text:
+                self._append_chat("对方：", text)
+        elif kind == "new_game":
+            if not self._is_host:
+                self._append_system("对方开始了新对局")
+
+    def _set_quick_enabled(self, enabled: bool) -> None:
+        for button in self.quick_buttons:
+            button.setEnabled(enabled)
+
+    def _send_quick(self, text: str) -> None:
+        if self._state != "connected":
+            return
+        self.chat_input.setText(text)
+        self._send_chat()
+
+    def _send_chat(self) -> None:
+        if self._state != "connected":
+            return
+        text = self.chat_input.text().strip()
+        if not text:
+            return
+        text = text[:1000]
+        if not self.manager.send({"type": "chat", "text": text}):
+            self._append_system("聊天发送失败")
+            return
+        self._append_chat("我：", text)
+        self.chat_input.clear()
+
+    def _copy_address(self) -> None:
+        if self._http_address:
+            QApplication.clipboard().setText(self._http_address)
+            self._append_system("联机地址已复制到剪贴板")
+
+    def _toggle_discovery(self) -> None:
+        if self.discovery.is_running():
+            self._stop_discovery()
+        else:
+            self._start_discovery()
+
+    def _start_discovery(self) -> None:
+        if self._state != "idle":
+            return
+        was_running = self.discovery.is_running()
+        if not was_running:
+            self._rooms.clear()
+            self.room_combo.blockSignals(True)
+            self.room_combo.clear()
+            self.room_combo.addItem("搜索中…", None)
+            self.room_combo.setEnabled(False)
+            self.room_combo.blockSignals(False)
+        if not self.discovery.start():
+            self.search_button.setText("搜索局域网房间")
+            return
+        self._room_timer.start()
+        self.search_button.setText("停止搜索")
+        self.search_button.setEnabled(True)
+
+    def _stop_discovery(self) -> None:
+        self.discovery.stop()
+        self._room_timer.stop()
+        self.search_button.setText("搜索局域网房间")
+        if (
+            self.room_combo.count() == 1
+            and self.room_combo.itemData(0) is None
+        ):
+            self.room_combo.blockSignals(True)
+            self.room_combo.setItemText(0, "未发现房间")
+            self.room_combo.blockSignals(False)
+
+    def _on_discovery_error(self, message: str) -> None:
+        self._append_system(f"搜索失败：{message}")
+        if self._state == "idle":
+            self.status_label.setText(message)
+
+    def _on_room_found(self, room: dict) -> None:
+        key = (str(room.get("ip")), int(room.get("port", 0)))
+        existing = key in self._rooms
+        if existing:
+            self._rooms[key].update(room)
+            self._rooms[key]["last_seen"] = time.monotonic()
+            return
+
+        room["last_seen"] = time.monotonic()
+        self._rooms[key] = room
+        placeholder = (
+            self.room_combo.count() == 1
+            and self.room_combo.itemData(0) is None
+        )
+        if placeholder:
+            self.room_combo.blockSignals(True)
+            self.room_combo.clear()
+            self.room_combo.blockSignals(False)
+        self.room_combo.blockSignals(True)
+        self.room_combo.addItem(
+            f"{room['name']}  ({room['ip']}:{room['port']})",
+            room,
+        )
+        self.room_combo.setEnabled(True)
+        self.room_combo.blockSignals(False)
+        if placeholder and not self.address_input.text().strip():
+            self.room_combo.setCurrentIndex(0)
+            self._on_room_selected(0)
+
+    def _on_room_selected(self, index: int) -> None:
+        room = self.room_combo.itemData(index)
+        if not isinstance(room, dict):
+            return
+        self.address_input.setText(
+            f"http://{room['ip']}:{room['port']}"
+        )
+        self.address_input.setFocus()
+
+    def _prune_rooms(self) -> None:
+        now = time.monotonic()
+        stale = [
+            key
+            for key, room in self._rooms.items()
+            if now - room.get("last_seen", now) > 9
+        ]
+        if not stale:
+            return
+        for key in stale:
+            self._rooms.pop(key, None)
+        current = self.room_combo.currentData()
+        current_key = (
+            (str(current.get("ip")), int(current.get("port", 0)))
+            if isinstance(current, dict)
+            else None
+        )
+        self.room_combo.blockSignals(True)
+        self.room_combo.clear()
+        for room in self._rooms.values():
+            self.room_combo.addItem(
+                f"{room['name']}  ({room['ip']}:{room['port']})",
+                room,
+            )
+        if self.room_combo.count() == 0:
+            self.room_combo.addItem("未发现房间", None)
+            self.room_combo.setEnabled(False)
+        else:
+            self.room_combo.setEnabled(self._state == "idle")
+            if current_key is not None:
+                for index in range(self.room_combo.count()):
+                    data = self.room_combo.itemData(index)
+                    if isinstance(data, dict) and (
+                        str(data.get("ip")),
+                        int(data.get("port", 0)),
+                    ) == current_key:
+                        self.room_combo.setCurrentIndex(index)
+                        break
+        self.room_combo.blockSignals(False)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._state == "idle" and not self.discovery.is_running():
+            self._start_discovery()
+
+    def _refresh_idle_controls(self) -> None:
+        if self._state == "connected":
+            self.chat_input.setFocus()
+
+    def focus_connect(self) -> None:
+        if self._state == "idle":
+            self.address_input.setFocus()
+            self.address_input.selectAll()
+
+    def add_system(self, text: str) -> None:
+        self._append_system(text)
+
+    def _append_system(self, text: str) -> None:
+        self._append_chat("系统：", text)
+
+    def _append_chat(self, prefix: str, text: str) -> None:
+        timestamp = datetime.datetime.now().strftime("%H:%M")
+        self.chat_log.appendPlainText(f"[{timestamp}] {prefix}{text}")
+        scrollbar = self.chat_log.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def closeEvent(self, event) -> None:
+        self._stop_discovery()
+        event.ignore()
+        self.hide()
+
+
+# ---- spectator_ui.py ----
+
+from typing import Optional
+
+from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+
+class SpectatorDialog(QDialog):
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.settings = QSettings("ChessPyQt", "Chess")
+        self.lan = LanManager(self)
+        self.setWindowTitle("观战模式")
+        self.setMinimumSize(1000, 720)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(14, 14, 14, 14)
+        root.setSpacing(10)
+
+        form = QHBoxLayout()
+        form.setSpacing(6)
+        self.address_edit = QLineEdit(
+            str(self.settings.value("spectator_address", ""))
+        )
+        self.address_edit.setPlaceholderText(
+            "ws://192.168.1.10:8766（房主联机端口 + 1）"
+        )
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_edit.setPlaceholderText("房间密码（如有）")
+        self.connect_button = QPushButton("连接观战")
+        self.disconnect_button = QPushButton("断开")
+        self.disconnect_button.setEnabled(False)
+        self.connect_button.clicked.connect(self._connect)
+        self.disconnect_button.clicked.connect(self.lan.disconnect)
+        form.addWidget(self.address_edit, 1)
+        form.addWidget(self.password_edit, 1)
+        form.addWidget(self.connect_button)
+        form.addWidget(self.disconnect_button)
+        root.addLayout(form)
+
+        self.status_label = QLabel(
+            "输入房主提供的观战地址。观战棋盘为只读，不会影响对局。"
+        )
+        self.status_label.setObjectName("HintLabel")
+        self.status_label.setWordWrap(True)
+        root.addWidget(self.status_label)
+
+        body = QHBoxLayout()
+        body.setSpacing(10)
+        self.board = ChessBoard()
+        self.board.input_locked = True
+        body.addWidget(self.board, 3)
+        self.notation = QTextBrowser()
+        self.notation.setReadOnly(True)
+        self.notation.setObjectName("Notation")
+        body.addWidget(self.notation, 2)
+        root.addLayout(body, 1)
+
+        self.lan.connected.connect(self._on_connected)
+        self.lan.disconnected.connect(self._on_disconnected)
+        self.lan.messageReceived.connect(self._on_message)
+        self.lan.errorOccurred.connect(self._on_error)
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            """
+            QDialog { background-color: #262421; }
+            QLabel { color: #e8ddc7; font-size: 13px; }
+            QLabel#HintLabel { color: #8d877d; font-size: 12px; }
+            QLineEdit {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 4px;
+                padding: 6px;
+            }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background-color: #4a463f; }
+            QPushButton:disabled { color: #77716a; border-color: #3a3732; }
+            QTextBrowser#Notation {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 6px;
+                padding: 8px;
+                font-family: Consolas, "Microsoft YaHei", monospace;
+                font-size: 12px;
+            }
+            """
+        )
+
+    def _connect(self) -> None:
+        address = self.address_edit.text().strip()
+        if not address:
+            self.status_label.setText("请输入观战地址")
+            return
+        self.settings.setValue("spectator_address", address)
+        self.settings.sync()
+        if self.lan.connect(address, self.password_edit.text()):
+            self.status_label.setText("正在连接观战…")
+
+    def _on_connected(self, is_host: bool) -> None:
+        del is_host
+        self.status_label.setText("观战已连接，等待房主同步局面…")
+        self.connect_button.setEnabled(False)
+        self.disconnect_button.setEnabled(True)
+        self.address_edit.setEnabled(False)
+        self.password_edit.setEnabled(False)
+
+    def _on_disconnected(self, reason: str) -> None:
+        self.status_label.setText(f"观战已断开：{reason}")
+        self.connect_button.setEnabled(True)
+        self.disconnect_button.setEnabled(False)
+        self.address_edit.setEnabled(True)
+        self.password_edit.setEnabled(True)
+
+    def _on_error(self, message: str) -> None:
+        self.status_label.setText(f"观战错误：{message}")
+
+    def _on_message(self, message: dict) -> None:
+        if message.get("type") != "spectate_state":
+            return
+        pgn = message.get("pgn")
+        if not isinstance(pgn, str) or not pgn.strip():
+            return
+        try:
+            tree = parse_pgn(pgn)
+        except PGNImportError:
+            return
+        node = tree.latest_node()
+        game = tree.build_game(node)
+        self.board.flipped = bool(message.get("flipped"))
+        self.board.set_game(game, reviewing=False)
+        self.board.input_locked = True
+        self.board.game_over = False
+        self.notation.setPlainText(pgn)
+        result = str(message.get("result") or tree.result or "")
+        result_text = f" · 结果 {result}" if result and result != "*" else ""
+        self.status_label.setText(
+            f"观战中 · 第 {node.ply} 手 · "
+            f"{message.get('white', '白方')} vs "
+            f"{message.get('black', '黑方')}{result_text}"
+        )
+
+    def closeEvent(self, event) -> None:
+        self.lan.shutdown()
+        super().closeEvent(event)
+
+
+# ---- main_window.py ----
+
+import html as html_module
+import math
+import random
+import threading
+from datetime import date
+from pathlib import Path
+from typing import Optional
+
+from PyQt6.QtCore import QSettings, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+
+class MainWindow(QMainWindow):
+    aiResponse = pyqtSignal(int, object, str)
+    analysisReady = pyqtSignal(int, object, bool)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("国际象棋")
+        self.setMinimumSize(960, 760)
+        self.resize(1180, 940)
+
+        self.ai_enabled = False
+        self.ai_thinking = False
+        self._ai_paused = False
+        self.ai_used_colors: set[str] = set()
+        self._ai_request_id = 0
+        self._thinking_dots = 0
+        self.match_mode = "two"
+        self.human_color = "w"
+        self.ai_color = "b"
+        self.difficulty = "普通"
+        self.game_tree = GameTree()
+        self.online = False
+        self.is_online_host = False
+        self.net_game_id = 0
+        self.local_color = "w"
+        self.remote_color = "b"
+        self._online_paused = False
+        self._network_dialog: Optional[NetworkDialog] = None
+        self._coach_dialog: Optional[CoachDialog] = None
+        self._spectator_dialog: Optional[SpectatorDialog] = None
+        self._spectator_server: Optional[SpectatorServer] = None
+        self.engine_path = find_stockfish()
+        self.sound_player = SoundPlayer()
+        self.lan = LanManager(self)
+        self.clock = ChessClock(ONLINE_CLOCK_SECONDS, 0, self)
+        self.clock.updated.connect(self._update_clock_labels)
+        self.clock.flag.connect(self._on_clock_flag)
+        self._draw_offer_pending = False
+        self._undo_request_pending = False
+        self._undo_request_target: Optional[int] = None
+        self._unread_chat = 0
+        self.online_time_control: Optional[tuple[int, int]] = None
+        self._clock_pending_move = False
+        self._session_restoring = False
+        self._session_save_timer = QTimer(self)
+        self._session_save_timer.setSingleShot(True)
+        self._session_save_timer.setInterval(600)
+        self._session_save_timer.timeout.connect(self._save_session)
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.setInterval(450)
+        self._thinking_timer.timeout.connect(self._tick_thinking)
+
+        self._settings = QSettings("ChessPyQt", "Chess")
+        self._loading_settings = True
+        self._analysis_token = 0
+        self._auto_analysis_token = 0
+        self._analysis_cancel = threading.Event()
+        self._hint_busy = False
+        self._eval_scores: dict[int, int] = {}
+        self._eval_display: dict[int, tuple[Optional[int], Optional[int]]] = {}
+        self._move_annotations: dict[int, str] = {}
+        self._analysis_timer = QTimer(self)
+        self._analysis_timer.setSingleShot(True)
+        self._analysis_timer.setInterval(280)
+        self._analysis_timer.timeout.connect(self._auto_analysis_timeout)
+
+        central = QWidget()
+        central.setObjectName("Central")
+        self.setCentralWidget(central)
+
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
+
+        top_bar = QHBoxLayout()
+        self.turn_label = QLabel()
+        self.turn_label.setObjectName("TurnLabel")
+        top_bar.addWidget(self.turn_label)
+        top_bar.addStretch()
+
+        self.undo_button = QPushButton("悔棋")
+        self.reset_button = QPushButton("重新开始")
+        flip_button = QPushButton("翻转棋盘")
+        self.fen_button = QPushButton("FEN")
+        export_button = QPushButton("导出 PGN")
+        self.online_button = QPushButton("联机")
+        join_button = QPushButton("连接")
+        watch_button = QPushButton("观战")
+        self.undo_button.clicked.connect(self._undo)
+        self.reset_button.clicked.connect(self._new_game)
+        flip_button.clicked.connect(self._flip_board)
+        self.fen_button.clicked.connect(self._show_fen_dialog)
+        export_button.clicked.connect(self._export_pgn)
+        self.online_button.clicked.connect(self._show_network_dialog)
+        join_button.clicked.connect(self._show_network_dialog_connect)
+        watch_button.clicked.connect(self._show_spectator_dialog)
+        top_bar.addWidget(self.online_button)
+        top_bar.addWidget(join_button)
+        top_bar.addWidget(watch_button)
+        top_bar.addWidget(flip_button)
+        top_bar.addWidget(self.fen_button)
+        top_bar.addWidget(export_button)
+        top_bar.addWidget(self.undo_button)
+        top_bar.addWidget(self.reset_button)
+        layout.addLayout(top_bar)
+
+        content = QHBoxLayout()
+        content.setSpacing(12)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(8)
+
+        clock_row = QHBoxLayout()
+        clock_row.setSpacing(8)
+        self.clock_caption = QLabel("联机棋钟 · 10 分钟包干")
+        self.clock_caption.setObjectName("HintLabel")
+        self.white_clock_label = QLabel()
+        self.black_clock_label = QLabel()
+        for label in (self.white_clock_label, self.black_clock_label):
+            label.setObjectName("ClockLabel")
+            label.setTextFormat(Qt.TextFormat.RichText)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.clock_caption.hide()
+        self.white_clock_label.hide()
+        self.black_clock_label.hide()
+        clock_row.addWidget(self.clock_caption)
+        clock_row.addWidget(self.white_clock_label)
+        clock_row.addWidget(self.black_clock_label)
+        clock_row.addStretch()
+        left_col.addLayout(clock_row)
+
+        board_row = QHBoxLayout()
+        board_row.setSpacing(8)
+        self.eval_bar = EvalBar()
+        board_row.addWidget(self.eval_bar)
+        self.board = ChessBoard()
+        board_row.addWidget(self.board, 1)
+        left_col.addLayout(board_row, 1)
+        self.captured_widget = CapturedPiecesWidget()
+        left_col.addWidget(self.captured_widget)
+        content.addLayout(left_col, 1)
+
+        sidebar = QWidget()
+        sidebar.setFixedWidth(310)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(0, 0, 0, 0)
+        side_layout.setSpacing(8)
+
+        notation_title = QLabel("棋谱")
+        notation_title.setObjectName("SideTitle")
+        side_layout.addWidget(notation_title)
+
+        self.notation = QTextBrowser()
+        self.notation.setObjectName("Notation")
+        self.notation.setReadOnly(True)
+        self.notation.setOpenLinks(False)
+        self.notation.setOpenExternalLinks(False)
+        self.notation.anchorClicked.connect(self._on_notation_anchor)
+        side_layout.addWidget(self.notation, 1)
+
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(6)
+        self.first_button = QPushButton("开局")
+        self.prev_button = QPushButton("上一步")
+        self.next_button = QPushButton("下一步")
+        self.latest_button = QPushButton("最新")
+        for button in (
+            self.first_button,
+            self.prev_button,
+            self.next_button,
+            self.latest_button,
+        ):
+            button.setObjectName("SmallButton")
+            nav_row.addWidget(button)
+        self.first_button.clicked.connect(self._go_first)
+        self.prev_button.clicked.connect(self._go_previous)
+        self.next_button.clicked.connect(self._go_next)
+        self.latest_button.clicked.connect(self._go_latest)
+        side_layout.addLayout(nav_row)
+
+        game_action_row = QHBoxLayout()
+        game_action_row.setSpacing(6)
+        self.resign_button = QPushButton("认输")
+        self.draw_button = QPushButton("提和")
+        self.claim_draw_button = QPushButton("判和")
+        self.pause_button = QPushButton("暂停")
+        self.rematch_button = QPushButton("再战")
+        for button in (
+            self.resign_button,
+            self.draw_button,
+            self.claim_draw_button,
+            self.pause_button,
+            self.rematch_button,
+        ):
+            button.setObjectName("SmallButton")
+            button.setEnabled(False)
+            game_action_row.addWidget(button)
+        self.resign_button.setToolTip("联机对局中认输")
+        self.draw_button.setToolTip("向对方提议和棋")
+        self.claim_draw_button.setToolTip(
+            "依据 50 回合或三次重复规则请求判和"
+        )
+        self.pause_button.setToolTip("请求暂停或继续联机对局")
+        self.rematch_button.setToolTip("对局结束后请求再来一局")
+        self.resign_button.clicked.connect(self._resign_online)
+        self.draw_button.clicked.connect(self._offer_draw)
+        self.claim_draw_button.clicked.connect(self._claim_draw)
+        self.pause_button.clicked.connect(self._toggle_online_pause)
+        self.rematch_button.clicked.connect(self._request_rematch)
+        side_layout.addLayout(game_action_row)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(6)
+        self.copy_button = QPushButton("复制棋谱")
+        self.import_button = QPushButton("导入 PGN")
+        self.hint_button = QPushButton("提示")
+        self.coach_button = QPushButton("教练")
+        for button in (
+            self.copy_button,
+            self.import_button,
+            self.hint_button,
+            self.coach_button,
+        ):
+            button.setObjectName("SmallButton")
+            action_row.addWidget(button)
+        self.copy_button.clicked.connect(self._copy_pgn)
+        self.import_button.clicked.connect(self._import_pgn)
+        self.hint_button.clicked.connect(self._request_hint)
+        self.coach_button.clicked.connect(self._show_coach_dialog)
+        side_layout.addLayout(action_row)
+
+        self.hint_label = QLabel("提示：--")
+        self.hint_label.setObjectName("HintLabel")
+        self.hint_label.setWordWrap(True)
+        side_layout.addWidget(self.hint_label)
+
+        self.eval_label = QLabel("评估：--")
+        self.eval_label.setObjectName("AiStatus")
+        self.eval_label.setWordWrap(True)
+        side_layout.addWidget(self.eval_label)
+        self.eval_graph = EvalGraphWidget()
+        side_layout.addWidget(self.eval_graph)
+        self.accuracy_label = QLabel("准确率：--")
+        self.accuracy_label.setObjectName("HintLabel")
+        self.accuracy_label.setWordWrap(True)
+        side_layout.addWidget(self.accuracy_label)
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("双人对战", "two")
+        self.mode_combo.addItem("人机对战", "human")
+        self.mode_combo.addItem("引擎互弈", "engine")
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
+        side_layout.addWidget(self.mode_combo)
+
+        side_controls = QHBoxLayout()
+        side_controls.setSpacing(6)
+        self.side_combo = QComboBox()
+        self.side_combo.addItem("你执白", "w")
+        self.side_combo.addItem("你执黑", "b")
+        self.side_combo.currentIndexChanged.connect(
+            self._on_human_side_changed
+        )
+        self.difficulty_combo = QComboBox()
+        for level in AI_LEVELS:
+            self.difficulty_combo.addItem(f"难度：{level}", level)
+        self.difficulty_combo.currentIndexChanged.connect(
+            self._on_difficulty_changed
+        )
+        side_controls.addWidget(self.side_combo, 1)
+        side_controls.addWidget(self.difficulty_combo, 1)
+        side_layout.addLayout(side_controls)
+
+        self.ai_status = QLabel("Stockfish：未启用")
+        self.ai_status.setObjectName("AiStatus")
+        self.ai_status.setWordWrap(True)
+        side_layout.addWidget(self.ai_status)
+
+        ai_button_row = QHBoxLayout()
+        ai_button_row.setSpacing(6)
+        self.cancel_ai_button = QPushButton("取消思考")
+        self.retry_ai_button = QPushButton("重试")
+        self.cancel_ai_button.setObjectName("SmallButton")
+        self.retry_ai_button.setObjectName("SmallButton")
+        self.cancel_ai_button.clicked.connect(self._cancel_ai_request)
+        self.retry_ai_button.clicked.connect(self._retry_ai)
+        ai_button_row.addWidget(self.cancel_ai_button)
+        ai_button_row.addWidget(self.retry_ai_button)
+        side_layout.addLayout(ai_button_row)
+
+        appearance_row = QHBoxLayout()
+        appearance_row.setSpacing(6)
+        self.theme_combo = QComboBox()
+        for theme in THEMES:
+            self.theme_combo.addItem(f"主题：{theme}", theme)
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        self.coords_checkbox = QCheckBox("坐标")
+        self.coords_checkbox.setChecked(True)
+        self.coords_checkbox.toggled.connect(self.board.set_coordinates)
+        appearance_row.addWidget(self.theme_combo, 1)
+        appearance_row.addWidget(self.coords_checkbox)
+        side_layout.addLayout(appearance_row)
+
+        self.sound_checkbox = QCheckBox("音效")
+        self.sound_checkbox.setChecked(self.sound_player.enabled)
+        self.sound_checkbox.toggled.connect(self.sound_player.set_enabled)
+        side_layout.addWidget(self.sound_checkbox)
+
+        clock_controls = QHBoxLayout()
+        clock_controls.setSpacing(6)
+        self.clock_checkbox = QCheckBox("棋钟")
+        self.clock_checkbox.setToolTip("开启后本局使用计时")
+        self.clock_minutes_spin = QSpinBox()
+        self.clock_minutes_spin.setRange(1, 180)
+        self.clock_minutes_spin.setValue(10)
+        self.clock_minutes_spin.setSuffix(" 分")
+        self.clock_increment_spin = QSpinBox()
+        self.clock_increment_spin.setRange(0, 60)
+        self.clock_increment_spin.setValue(0)
+        self.clock_increment_spin.setSuffix(" 秒/步")
+        self.clock_checkbox.toggled.connect(self._on_clock_toggled)
+        self.clock_minutes_spin.valueChanged.connect(
+            self._on_clock_settings_changed
+        )
+        self.clock_increment_spin.valueChanged.connect(
+            self._on_clock_settings_changed
+        )
+        clock_controls.addWidget(self.clock_checkbox)
+        clock_controls.addWidget(self.clock_minutes_spin, 1)
+        clock_controls.addWidget(self.clock_increment_spin, 1)
+        side_layout.addLayout(clock_controls)
+
+        if self.engine_path is not None:
+            engine_hint = QLabel(f"引擎：{self.engine_path.name}")
+            engine_hint.setToolTip(str(self.engine_path))
+        else:
+            engine_hint = QLabel(
+                "未找到 Stockfish，请放入 stockfish/ 目录或设置 STOCKFISH_PATH"
+            )
+        engine_hint.setObjectName("HintLabel")
+        engine_hint.setWordWrap(True)
+        side_layout.addWidget(engine_hint)
+
+        content.addWidget(sidebar)
+        layout.addLayout(content, 1)
+
+        self.board.stateChanged.connect(self._on_state_changed)
+        self.board.newMovePlayed.connect(self._on_new_move)
+        self.board.moveCompleted.connect(self._maybe_request_ai)
+        self.board.gameEnded.connect(self._on_game_ended)
+        self.board.moveSound.connect(self.sound_player.play)
+        self.board.userMovePlayed.connect(self._on_local_move)
+        self.aiResponse.connect(self._on_ai_response)
+        self.analysisReady.connect(self._on_analysis_ready)
+        self.lan.connected.connect(self._on_lan_connected)
+        self.lan.disconnected.connect(self._on_lan_disconnected)
+        self.lan.messageReceived.connect(self._on_lan_message)
+        self.lan.errorOccurred.connect(self._on_lan_error)
+        self.board.setToolTip("可拖拽或点击走子")
+
+        self.statusBar().showMessage("点击或拖拽己方棋子走棋，点击棋谱可回放")
+        QShortcut(QKeySequence("Ctrl+Z"), self, activated=self._undo)
+        QShortcut(QKeySequence("Ctrl+Y"), self, activated=self._go_next)
+        QShortcut(QKeySequence("Ctrl+N"), self, activated=self._new_game)
+
+        self.setStyleSheet(
+            """
+            QMainWindow { background-color: #262421; }
+            QWidget#Central { background-color: #262421; }
+            QLabel#TurnLabel {
+                color: #f0e6d2;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            QLabel#SideTitle {
+                color: #f0e6d2;
+                font-size: 16px;
+                font-weight: 600;
+            }
+            QLabel#AiStatus { color: #c9c1b4; font-size: 13px; }
+            QLabel#HintLabel { color: #b9ab92; font-size: 12px; }
+            QLabel#ClockLabel {
+                color: #c9c1b4;
+                background-color: #1d1b19;
+                border: 1px solid #3d3933;
+                border-radius: 4px;
+                padding: 3px 10px;
+                font-family: Consolas, "Courier New", monospace;
+                font-size: 15px;
+            }
+            QPushButton {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 6px;
+                padding: 7px 16px;
+                font-size: 14px;
+            }
+            QPushButton:hover { background-color: #4a463f; }
+            QPushButton:pressed { background-color: #2f2c28; }
+            QPushButton:disabled { color: #77716a; border-color: #3a3732; }
+            QPushButton#SmallButton { padding: 5px 8px; font-size: 12px; }
+            QCheckBox { color: #f0e6d2; font-size: 13px; spacing: 6px; }
+            QComboBox {
+                background-color: #3b3834;
+                color: #f0e6d2;
+                border: 1px solid #555049;
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-size: 12px;
+            }
+            QComboBox::drop-down { border: 0px; }
+            QComboBox:disabled {
+                color: #77716a;
+                background-color: #2f2c28;
+                border-color: #3a3732;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #2b2926;
+                color: #f0e6d2;
+                selection-background-color: #4a463f;
+            }
+            QTextBrowser#Notation {
+                background-color: #1d1b19;
+                color: #e8ddc7;
+                border: 1px solid #3d3933;
+                border-radius: 6px;
+                padding: 6px;
+                font-family: Consolas, "Microsoft YaHei", "Courier New", monospace;
+                font-size: 12px;
+            }
+            QStatusBar { color: #c9c1b4; }
+            """
+        )
+
+        self._load_settings()
+        self._loading_settings = False
+        if not self._restore_session():
+            self._reset_local_clock()
+        self._apply_mode_controls()
+        self._refresh_locks()
+        self._refresh_status()
+        self._refresh_notation()
+        self._refresh_nav_buttons()
+        self._refresh_captured()
+        self._update_ai_status()
+        self._analysis_token += 1
+        self._show_cached_eval(0)
+        if self.engine_path is not None:
+            self._schedule_auto_analysis()
+
+    def _flip_board(self) -> None:
+        self.board.flip()
+        self.eval_bar.set_flipped(self.board.flipped)
+
+    def _show_network_dialog(self, focus_connect: bool = False) -> None:
+        if self._network_dialog is None:
+            self._network_dialog = NetworkDialog(self.lan, self)
+        self._network_dialog.show()
+        self._network_dialog.raise_()
+        self._network_dialog.activateWindow()
+        self._unread_chat = 0
+        self._update_chat_button()
+        if focus_connect:
+            self._network_dialog.focus_connect()
+
+    def _show_network_dialog_connect(self) -> None:
+        self._show_network_dialog(focus_connect=True)
+
+    def _show_coach_dialog(self) -> None:
+        if self._coach_dialog is None:
+            self._coach_dialog = CoachDialog(self._settings, self)
+        self._coach_dialog.show()
+        self._coach_dialog.raise_()
+        self._coach_dialog.activateWindow()
+
+    def _show_spectator_dialog(self) -> None:
+        if self._spectator_dialog is None:
+            self._spectator_dialog = SpectatorDialog(self)
+        self._spectator_dialog.show()
+        self._spectator_dialog.raise_()
+        self._spectator_dialog.activateWindow()
+
+    def coach_context(self) -> dict:
+        game = self.board.game
+        sans, result = self._full_san_result()
+        last_ply = len(game.san_history)
+        annotations = dict(self._move_annotations)
+        evals = dict(self._eval_scores)
+        return {
+            "sans": sans,
+            "result": result,
+            "pgn": self._pgn_text(),
+            "annotations": annotations,
+            "evals": evals,
+            "history_sans": list(game.san_history),
+            "last_san": game.san_history[-1] if last_ply else "",
+            "last_annotation": annotations.get(last_ply, ""),
+            "eval_before": evals.get(last_ply - 1) if last_ply > 0 else None,
+            "eval_after": evals.get(last_ply),
+            "current_fen": game.to_fen(),
+        }
+
+    def _update_chat_button(self) -> None:
+        if self._unread_chat > 0:
+            self.online_button.setText("联机*")
+            self.online_button.setToolTip(
+                f"{self._unread_chat} 条未读聊天消息"
+            )
+        else:
+            self.online_button.setText("联机")
+            self.online_button.setToolTip("")
+
+    def _network_system(self, text: str) -> None:
+        if self._network_dialog is not None:
+            self._network_dialog.add_system(text)
+
+    def _lan_dialog_parent(self) -> QWidget:
+        if (
+            self._network_dialog is not None
+            and self._network_dialog.isVisible()
+        ):
+            return self._network_dialog
+        return self
+
+    def _online_clock_config(self) -> tuple[int, int]:
+        if self.online_time_control is not None:
+            return self.online_time_control
+        return ONLINE_CLOCK_SECONDS, 0
+
+    def _local_clock_config(self) -> tuple[int, int]:
+        return (
+            self.clock_minutes_spin.value() * 60,
+            self.clock_increment_spin.value(),
+        )
+
+    def _active_clock_config(self) -> tuple[int, int]:
+        if self.online:
+            return self._online_clock_config()
+        return self._local_clock_config()
+
+    def _clock_is_enabled(self) -> bool:
+        return self.online or self.clock_checkbox.isChecked()
+
+    def _update_clock_caption(self) -> None:
+        base, increment = self._active_clock_config()
+        minutes = max(1, base // 60)
+        prefix = "联机棋钟" if self.online else "棋钟"
+        if increment:
+            self.clock_caption.setText(
+                f"{prefix} · {minutes} 分钟 + {increment} 秒/步"
+            )
+        else:
+            self.clock_caption.setText(f"{prefix} · {minutes} 分钟包干")
+
+    def _update_clock_labels(self) -> None:
+        if not self._clock_is_enabled():
+            self.clock_caption.hide()
+            self.white_clock_label.hide()
+            self.black_clock_label.hide()
+            return
+
+        self.clock_caption.show()
+        self.white_clock_label.show()
+        self.black_clock_label.show()
+        active = self.clock.active
+        for color, label in (
+            ("w", self.white_clock_label),
+            ("b", self.black_clock_label),
+        ):
+            prefix = "白" if color == "w" else "黑"
+            color_code = "#f0c060" if active == color else "#9c9488"
+            label.setText(
+                f'<span style="color:{color_code};">'
+                f"{prefix} {self.clock.display(color)}</span>"
+            )
+
+    def _refresh_clock_controls(self) -> None:
+        online = self.online
+        enabled = self.clock_checkbox.isChecked()
+        self.clock_checkbox.setEnabled(not online)
+        editable = not online and enabled and not self.board.game.history
+        self.clock_minutes_spin.setEnabled(editable)
+        self.clock_increment_spin.setEnabled(editable)
+
+    def _on_clock_toggled(self, checked: bool) -> None:
+        if self._loading_settings or self.online:
+            return
+        self._reset_local_clock()
+        self._refresh_clock_controls()
+
+    def _on_clock_settings_changed(self, value: int) -> None:
+        if self._loading_settings or self.online:
+            return
+        if not self.board.game.history:
+            self._reset_local_clock()
+        self._refresh_clock_controls()
+
+    def _reset_local_clock(self) -> None:
+        if self.online:
+            return
+        self._clock_pending_move = False
+        if not self.clock_checkbox.isChecked():
+            self.clock.stop()
+            self._update_clock_labels()
+            self._refresh_clock_controls()
+            return
+
+        base, increment = self._local_clock_config()
+        self.clock.reset(base, increment)
+        game = self.board.game
+        if (
+            game.history
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            self.clock.start(game.turn)
+        self._update_clock_caption()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+
+    def _refresh_online_actions(self) -> None:
+        in_game = self.online and not self.board.game_over
+        self.resign_button.setEnabled(in_game)
+        self.draw_button.setEnabled(
+            in_game and not self._draw_offer_pending
+        )
+        claimable = (
+            not self.board.game_over
+            and not self.board.is_reviewing()
+            and self.board.game.is_claimable_draw()
+        )
+        if self.online:
+            claimable = (
+                claimable
+                and self.board.game.turn == self.local_color
+            )
+        self.claim_draw_button.setEnabled(claimable)
+        self.pause_button.setEnabled(in_game)
+        self.pause_button.setText("继续" if self._online_paused else "暂停")
+        self.rematch_button.setEnabled(self.online and self.board.game_over)
+
+    def _on_clock_flag(self, color: str) -> None:
+        if self.board.game_over:
+            return
+        if not self.online and not self.clock_checkbox.isChecked():
+            return
+        self.clock.stop()
+        self._draw_offer_pending = False
+        winner = "黑方" if color == "w" else "白方"
+        side = "白方" if color == "w" else "黑方"
+        result = "0-1" if color == "w" else "1-0"
+        message = f"{side}超时，{winner}获胜"
+        if self.online:
+            self.lan.send({"type": "timeout", "color": color})
+            self._network_system(message)
+        self.board.finish_game(message, result)
+
+    def _resign_online(self) -> None:
+        if not self.online or self.board.game_over:
+            return
+        answer = QMessageBox.question(
+            self,
+            "认输",
+            "确认认输吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        color = self.local_color
+        result = "0-1" if color == "w" else "1-0"
+        self._draw_offer_pending = False
+        self.lan.send({"type": "resign", "color": color})
+        self._network_system("你已认输")
+        self.board.finish_game("你已认输", result)
+
+    def _offer_draw(self) -> None:
+        if (
+            not self.online
+            or self.board.game_over
+            or self._draw_offer_pending
+        ):
+            return
+        if self.lan.send({"type": "draw_offer"}):
+            self._draw_offer_pending = True
+            self._network_system("已向对方提出和棋")
+            self.statusBar().showMessage("已向对方提出和棋，等待回应", 5000)
+            self._refresh_online_actions()
+
+    def _toggle_online_pause(self) -> None:
+        if not self.online or self.board.game_over:
+            return
+        kind = "resume_request" if self._online_paused else "pause_request"
+        if self.lan.send({"type": kind}):
+            self.statusBar().showMessage(
+                "已请求继续对局，等待对方回应"
+                if self._online_paused
+                else "已请求暂停对局，等待对方回应",
+                5000,
+            )
+
+    def _set_online_paused(self, paused: bool) -> None:
+        if not self.online:
+            return
+        self._online_paused = paused
+        self.board.input_locked = paused
+        self.board.locked_color = None if paused else self.remote_color
+        self._clock_pending_move = False
+        if paused:
+            self.clock.stop()
+            self._network_system("对局已暂停")
+        elif not self.board.game_over:
+            self.clock.start(self.board.game.turn)
+            self._network_system("对局已继续")
+        self.pause_button.setText("继续" if paused else "暂停")
+        self._refresh_status()
+        self._refresh_online_actions()
+
+    def _request_rematch(self) -> None:
+        if not self.online or not self.board.game_over:
+            return
+        if self.lan.send({"type": "rematch_request"}):
+            self._network_system("已请求再来一局")
+            self.statusBar().showMessage("已请求再来一局，等待对方回应", 5000)
+
+    def _claim_draw(self) -> None:
+        game = self.board.game
+        if self.board.game_over or self.board.is_reviewing():
+            return
+        if not game.is_claimable_draw():
+            return
+        if self.online and game.turn != self.local_color:
+            return
+        reasons: list[str] = []
+        if game.is_fifty_move_draw():
+            reasons.append("50 回合规则")
+        if game.is_threefold_repetition():
+            reasons.append("三次重复局面")
+        reason = "、".join(reasons)
+        message = f"和棋（{reason}）"
+        answer = QMessageBox.question(
+            self,
+            "判和",
+            f"确认依据{reason}请求判和吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._draw_offer_pending = False
+        if self.online:
+            self.lan.send({"type": "claim_draw", "reason": reason})
+            self._network_system(message)
+        self.board.finish_game(message, "1/2-1/2")
+
+    def _request_online_undo(self) -> None:
+        if not self.online or self.board.game_over:
+            return
+        if self._undo_request_pending:
+            self.statusBar().showMessage("已有悔棋请求等待对方回应", 4000)
+            return
+        history = self.board.game.history
+        if not history:
+            return
+        if self.board.game.turn == self.local_color:
+            target = max(0, len(history) - 2)
+        else:
+            target = max(0, len(history) - 1)
+        if target == len(history):
+            return
+        if self.lan.send({"type": "undo_request", "target": target}):
+            self._undo_request_pending = True
+            self._undo_request_target = target
+            self._network_system(f"已请求悔棋至第 {target} 手")
+            self.statusBar().showMessage(
+                f"已请求悔棋至第 {target} 手，等待对方同意", 5000
+            )
+            self._refresh_online_actions()
+
+    def _set_online_controls(self) -> None:
+        self.mode_combo.setEnabled(not self.online)
+        self.side_combo.setEnabled(
+            not self.online and self.match_mode == "human"
+        )
+        self.difficulty_combo.setEnabled(
+            not self.online and self.match_mode in ("human", "engine")
+        )
+        self.undo_button.setEnabled(not self.online)
+        self.import_button.setEnabled(not self.online)
+        self.fen_button.setEnabled(not self.online)
+        self._refresh_clock_controls()
+
+    def _reset_online_game(
+        self, send: bool = False, announce: bool = False
+    ) -> None:
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = False
+        self.ai_used_colors.clear()
+        self._reset_analysis_state()
+        self.game_tree = GameTree()
+        self.board.flipped = self.local_color == "b"
+        self.eval_bar.set_flipped(self.board.flipped)
+        self.board.new_game()
+        self.board.locked_color = self.remote_color
+        self.board.input_locked = False
+        self._refresh_locks_online()
+        self._draw_offer_pending = False
+        self._undo_request_pending = False
+        self._undo_request_target = None
+        self._online_paused = False
+        self.pause_button.setText("暂停")
+        self._clock_pending_move = False
+        base, increment = self._online_clock_config()
+        self.clock.reset(base, increment)
+        self.clock.start("w")
+        self._update_clock_caption()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+        self._refresh_status()
+        self._refresh_notation()
+        self._refresh_nav_buttons()
+        self._refresh_captured()
+        self._show_cached_eval(0)
+        self._update_ai_status()
+        if send:
+            payload = {"type": "new_game", "game": self.net_game_id}
+            if not self.lan.send(payload):
+                self.lan.disconnect("发送新对局消息失败")
+        if announce:
+            self._network_system("你开始了新对局")
+
+    def _refresh_locks_online(self) -> None:
+        if self.online:
+            if self._online_paused:
+                self.board.locked_color = None
+                self.board.input_locked = True
+            else:
+                self.board.locked_color = self.remote_color
+                self.board.input_locked = False
+
+    def _on_spectator_hosting(self, address: str) -> None:
+        self._network_system(f"观战地址：{address}")
+        self.statusBar().showMessage(f"观战已开启：{address}", 8000)
+
+    def _on_spectator_error(self, message: str) -> None:
+        self._network_system(message)
+        self.statusBar().showMessage(message, 6000)
+
+    def _start_spectator_server(self, port: int, password: str) -> None:
+        self._stop_spectator_server()
+        if not 1 <= port <= 65535:
+            self._network_system("观战端口超出范围，未开启观战")
+            return
+        server = SpectatorServer(self)
+        server.hosting.connect(self._on_spectator_hosting)
+        server.errorOccurred.connect(self._on_spectator_error)
+        if server.start(port, password):
+            self._spectator_server = server
+            self._broadcast_spectator_state()
+
+    def _stop_spectator_server(self) -> None:
+        server = self._spectator_server
+        self._spectator_server = None
+        if server is not None:
+            server.stop()
+
+    def _broadcast_spectator_state(self) -> None:
+        if self._spectator_server is None:
+            return
+        white, black = self._pgn_names()
+        self._spectator_server.set_state(
+            {
+                "type": "spectate_state",
+                "pgn": self._pgn_text(),
+                "fen": self.board.game.to_fen(),
+                "ply": self.game_tree.current.ply,
+                "flipped": bool(self.board.flipped),
+                "white": white,
+                "black": black,
+                "result": self.board.final_result()
+                or self.game_tree.result,
+            }
+        )
+
+    def _on_lan_connected(self, is_host: bool) -> None:
+        if not self.lan.is_connected():
+            return
+        self.online = True
+        self.is_online_host = is_host
+        self.net_game_id = 1
+        self.local_color = "w" if is_host else "b"
+        self.remote_color = "b" if is_host else "w"
+        self.match_mode = "two"
+        self.mode_combo.blockSignals(True)
+        index = self.mode_combo.findData("two")
+        if index >= 0:
+            self.mode_combo.setCurrentIndex(index)
+        self.mode_combo.blockSignals(False)
+        self.ai_enabled = False
+        self._ai_request_id += 1
+        self._ai_paused = False
+        self._draw_offer_pending = False
+        self._online_paused = False
+        self.pause_button.setText("暂停")
+        self._set_ai_thinking(False)
+        if is_host:
+            if self._network_dialog is not None:
+                base, increment = (
+                    self._network_dialog.current_time_control()
+                )
+            else:
+                base, increment = self._online_clock_config()
+            self.online_time_control = (base, increment)
+            self.lan.send(
+                {
+                    "type": "time_control",
+                    "base": base,
+                    "increment": increment,
+                }
+            )
+        self._set_online_controls()
+        self._reset_online_game()
+        if (
+            is_host
+            and self._network_dialog is not None
+            and self._network_dialog.spectator_enabled()
+        ):
+            port = self._network_dialog.host_port()
+            if port < 65535:
+                self._start_spectator_server(
+                    port + 1, self._network_dialog.host_password()
+                )
+            else:
+                self._network_system("端口 65535 无法开启观战端口")
+        side = "白" if is_host else "黑"
+        self.setWindowTitle(f"国际象棋 - 联机（你执{side}）")
+        self.ai_status.setText(f"联机：已连接（你执{side}）")
+        self.reset_button.setEnabled(self.is_online_host)
+        self.statusBar().showMessage(
+            f"联机已连接，你执{side}；点击“联机”可打开聊天窗口"
+        )
+
+    def _on_lan_disconnected(self, reason: str) -> None:
+        if not self.online:
+            return
+        self.online = False
+        self.is_online_host = False
+        self.net_game_id = 0
+        self.online_time_control = None
+        self._stop_spectator_server()
+        self._clock_pending_move = False
+        self._draw_offer_pending = False
+        self._undo_request_pending = False
+        self._undo_request_target = None
+        self._online_paused = False
+        self.pause_button.setText("暂停")
+        self._unread_chat = 0
+        self._update_chat_button()
+        self._reset_local_clock()
+        self.board.locked_color = None
+        self.board.input_locked = False
+        self.undo_button.setEnabled(True)
+        self.import_button.setEnabled(True)
+        self.fen_button.setEnabled(True)
+        self.reset_button.setEnabled(True)
+        self.setWindowTitle("国际象棋")
+        self._apply_mode_controls()
+        self._update_ai_status()
+        self._refresh_status()
+        if self.engine_path is not None:
+            self._schedule_auto_analysis()
+        self.statusBar().showMessage(f"联机已断开：{reason}")
+
+    def _on_lan_error(self, message: str) -> None:
+        self.statusBar().showMessage(f"联机错误：{message}", 6000)
+
+    def _on_local_move(self, uci: str) -> None:
+        if not self.online:
+            return
+        self._clock_pending_move = True
+        message = {
+            "type": "move",
+            "uci": uci,
+            "ply": len(self.board.game.history),
+            "game": self.net_game_id,
+            "fen": self.board.game.to_fen(),
+        }
+        if not self.lan.send(message):
+            self.lan.disconnect("发送着法失败")
+
+    def _apply_time_control_message(self, message: dict) -> None:
+        if self.is_online_host:
+            return
+        try:
+            base = int(message.get("base"))
+            increment = int(message.get("increment"))
+        except (TypeError, ValueError):
+            self.lan.disconnect("同步错误：棋钟设置无效")
+            return
+        if not 60 <= base <= 10800 or not 0 <= increment <= 60:
+            self.lan.disconnect("同步错误：棋钟设置超出范围")
+            return
+        self.online_time_control = (base, increment)
+        if self._network_dialog is not None:
+            self._network_dialog.apply_time_control(base, increment)
+        if self.online:
+            if not self.board.game.history:
+                self._clock_pending_move = False
+                self.clock.reset(base, increment)
+                self.clock.start("w")
+                self._update_clock_labels()
+            else:
+                self.clock.increment = increment
+            self._update_clock_caption()
+
+    def _on_lan_message(self, message: dict) -> None:
+        kind = message.get("type")
+        if kind == "time_control":
+            self._apply_time_control_message(message)
+            return
+        if not self.online:
+            return
+        if not isinstance(kind, str) or kind not in ONLINE_MESSAGE_TYPES:
+            return
+        game = self.board.game
+        if kind == "move":
+            game_id = message.get("game")
+            if isinstance(game_id, int) and game_id != self.net_game_id:
+                return
+            if self.board.game_over:
+                return
+            if game.turn != self.remote_color:
+                self.lan.disconnect("同步错误：现在不是对方走棋")
+                return
+            ply = message.get("ply")
+            if isinstance(ply, int) and ply != len(game.history) + 1:
+                self.lan.disconnect(
+                    f"同步错误：对方步数 {ply} 与本地不一致"
+                )
+                return
+            uci = str(message.get("uci", ""))
+            move = game.find_move_by_uci(uci) if uci else None
+            if move is None:
+                self.lan.disconnect(f"同步错误：对方着法无效 {uci}")
+                return
+            self._clock_pending_move = True
+            self.board.execute_move(move)
+            expected_fen = message.get("fen")
+            if (
+                isinstance(expected_fen, str)
+                and expected_fen
+                and game.to_fen() != expected_fen
+            ):
+                self.lan.disconnect("同步错误：局面校验失败")
+                return
+        elif kind == "new_game":
+            if self.is_online_host:
+                return
+            game_id = message.get("game")
+            if isinstance(game_id, int):
+                if game_id <= self.net_game_id:
+                    return
+                self.net_game_id = game_id
+            self._reset_online_game()
+
+        elif kind == "resign":
+            if message.get("color") != self.remote_color:
+                self.lan.disconnect("同步错误：认输消息无效")
+                return
+            result = "1-0" if self.remote_color == "b" else "0-1"
+            self._draw_offer_pending = False
+            self._network_system("对方认输")
+            self.board.finish_game("对方认输，你获胜", result)
+
+        elif kind == "timeout":
+            color = message.get("color")
+            if color not in ("w", "b"):
+                self.lan.disconnect("同步错误：超时消息无效")
+                return
+            if self.board.game_over:
+                return
+            if color == self.local_color and (
+                not self.clock.is_running()
+                or self.clock.remaining_seconds(color) > 2.0
+            ):
+                self.lan.disconnect("同步错误：超时时间与本地棋钟不一致")
+                return
+            result = "0-1" if color == "w" else "1-0"
+            loser = "白方" if color == "w" else "黑方"
+            winner = "黑方" if color == "w" else "白方"
+            message_text = f"{loser}超时，{winner}获胜"
+            self._draw_offer_pending = False
+            self._network_system(message_text)
+            self.board.finish_game(message_text, result)
+
+        elif kind == "claim_draw":
+            if (
+                game.turn != self.remote_color
+                or not game.is_claimable_draw()
+            ):
+                self.lan.disconnect("同步错误：对方判和条件不成立")
+                return
+            reason = str(message.get("reason", "50 回合或三次重复规则"))
+            self._draw_offer_pending = False
+            self._network_system(f"对方请求判和（{reason}）")
+            self.board.finish_game(f"和棋（{reason}）", "1/2-1/2")
+
+        elif kind == "draw_offer":
+            if self.board.game_over:
+                return
+            self._network_system("对方提议和棋")
+            answer = QMessageBox.question(
+                self._lan_dialog_parent(),
+                "对方提和",
+                "对方提议和棋，是否接受？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._draw_offer_pending = False
+                self.lan.send({"type": "draw_accept"})
+                self._network_system("你接受了和棋")
+                self.board.finish_game("双方同意和棋", "1/2-1/2")
+            else:
+                self.lan.send({"type": "draw_decline"})
+                self._network_system("你拒绝了和棋")
+
+        elif kind == "draw_accept":
+            if not self._draw_offer_pending:
+                self._network_system("收到无效的和棋回应，已忽略")
+                return
+            if self.board.game_over:
+                return
+            self._draw_offer_pending = False
+            self._network_system("对方接受了和棋")
+            self.board.finish_game("双方同意和棋", "1/2-1/2")
+
+        elif kind == "draw_decline":
+            if not self._draw_offer_pending:
+                return
+            self._draw_offer_pending = False
+            self._network_system("对方拒绝了和棋")
+            self._refresh_online_actions()
+
+        elif kind == "undo_request":
+            if self.board.game_over:
+                return
+            target = message.get("target")
+            if not isinstance(target, int) or not (
+                0 <= target < len(game.history)
+            ):
+                self.lan.disconnect("同步错误：悔棋目标无效")
+                return
+            answer = QMessageBox.question(
+                self._lan_dialog_parent(),
+                "对方请求悔棋",
+                f"对方请求悔棋至第 {target} 手，是否同意？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                node = self._node_at_ply(target)
+                if node is None:
+                    self.lan.disconnect("同步错误：找不到悔棋目标")
+                    return
+                self.lan.send({"type": "undo_accept", "target": target})
+                self._go_to_node(node, truncate=True)
+                self._network_system("你同意了对方悔棋")
+            else:
+                self.lan.send({"type": "undo_decline"})
+                self._network_system("你拒绝了对方悔棋")
+
+        elif kind == "undo_accept":
+            if not self._undo_request_pending:
+                self._network_system("收到无效的悔棋回应，已忽略")
+                return
+            requested_target = self._undo_request_target
+            self._undo_request_pending = False
+            self._undo_request_target = None
+            if self.board.game_over:
+                return
+            target = message.get("target")
+            if (
+                target != requested_target
+                or not isinstance(target, int)
+                or not (0 <= target < len(game.history))
+            ):
+                self.lan.disconnect("同步错误：悔棋目标与请求不一致")
+                return
+            node = self._node_at_ply(target)
+            if node is None:
+                self.lan.disconnect("同步错误：找不到悔棋目标")
+                return
+            self._go_to_node(node, truncate=True)
+            self._network_system("对方同意了悔棋")
+
+        elif kind == "undo_decline":
+            if not self._undo_request_pending:
+                return
+            self._undo_request_pending = False
+            self._undo_request_target = None
+            self._network_system("对方拒绝了悔棋")
+
+        elif kind == "pause_request":
+            if self.board.game_over or self._online_paused:
+                return
+            answer = QMessageBox.question(
+                self._lan_dialog_parent(),
+                "对方请求暂停",
+                "对方请求暂停对局，是否同意？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self.lan.send({"type": "pause_accept"})
+                self._set_online_paused(True)
+            else:
+                self.lan.send({"type": "pause_decline"})
+                self._network_system("你拒绝了暂停")
+
+        elif kind == "pause_accept":
+            self._set_online_paused(True)
+
+        elif kind == "pause_decline":
+            self._network_system("对方拒绝暂停")
+
+        elif kind == "resume_request":
+            self.lan.send({"type": "resume_accept"})
+            self._set_online_paused(False)
+
+        elif kind == "resume_accept":
+            self._set_online_paused(False)
+
+        elif kind == "rematch_request":
+            if not self.board.game_over:
+                return
+            answer = QMessageBox.question(
+                self._lan_dialog_parent(),
+                "再来一局",
+                "对方请求再来一局，是否同意？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.lan.send({"type": "rematch_decline"})
+                self._network_system("你拒绝了再来一局")
+                return
+            if self.is_online_host:
+                self.net_game_id += 1
+                self._reset_online_game(send=True, announce=True)
+                self._network_system("已开始新对局")
+            else:
+                self.lan.send({"type": "rematch_accept"})
+                self._network_system("已同意再来一局，等待房主开始")
+
+        elif kind == "rematch_accept":
+            if not self.is_online_host or not self.board.game_over:
+                return
+            self.net_game_id += 1
+            self._reset_online_game(send=True, announce=True)
+            self._network_system("已开始新对局")
+
+        elif kind == "rematch_decline":
+            self._network_system("对方拒绝了再来一局")
+
+        elif kind == "chat":
+            text = str(message.get("text", ""))[:2000]
+            if not text:
+                return
+            self.sound_player.play("chat")
+            if (
+                self._network_dialog is None
+                or not self._network_dialog.isVisible()
+                or not self._network_dialog.isActiveWindow()
+            ):
+                self._unread_chat += 1
+                self._update_chat_button()
+                self.statusBar().showMessage(
+                    f"收到联机聊天：{text[:60]}", 5000
+                )
+
+    def _pgn_names(self) -> tuple[str, str]:
+        if self.online:
+            if self.local_color == "w":
+                return "Host", "Guest"
+            return "Guest", "Host"
+        white = "Player"
+        black = "Player 2"
+        if self.match_mode == "human":
+            if self.human_color == "w":
+                black = "Stockfish"
+            else:
+                white = "Stockfish"
+        elif self.match_mode == "engine":
+            white = "Stockfish"
+            black = "Stockfish"
+        else:
+            if "w" in self.ai_used_colors:
+                white = "Stockfish"
+            if "b" in self.ai_used_colors:
+                black = "Stockfish"
+        return white, black
+
+    def _full_san_result(self) -> tuple[list[str], str]:
+        sans = [node.san for node in self.game_tree.mainline()]
+        result = self.board.final_result() or self.game_tree.result
+        return sans, result
+
+    def _pgn_text(self) -> str:
+        white, black = self._pgn_names()
+        if self.game_tree.headers.get("White"):
+            white = self.game_tree.headers["White"]
+        if self.game_tree.headers.get("Black"):
+            black = self.game_tree.headers["Black"]
+        result = self.board.final_result() or self.game_tree.result
+        extra_headers: dict[str, str] = {}
+        if self._clock_is_enabled():
+            base, increment = self._active_clock_config()
+            extra_headers["TimeControl"] = f"{base}+{increment}"
+        return build_pgn_tree(
+            self.game_tree,
+            result,
+            white=white,
+            black=black,
+            extra_headers=extra_headers,
+        )
+
+    def _export_pgn(self) -> None:
+        pgn = self._pgn_text()
+        default_name = f"chess_{date.today():%Y%m%d}.pgn"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出 PGN",
+            default_name,
+            "PGN 文件 (*.pgn);;所有文件 (*)",
+        )
+        if not path:
+            return
+        if not path.lower().endswith(".pgn"):
+            path += ".pgn"
+        try:
+            Path(path).write_text(pgn, encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, "导出失败", f"无法写入文件：{exc}")
+            return
+        self.statusBar().showMessage(f"PGN 已保存：{path}", 5000)
+
+    def _copy_pgn(self) -> None:
+        QApplication.clipboard().setText(self._pgn_text())
+        self.statusBar().showMessage("棋谱已复制到剪贴板", 4000)
+
+    def _import_pgn(self) -> None:
+        if self.online:
+            QMessageBox.information(
+                self, "联机中", "联机对局中不能导入 PGN，请先断开连接。"
+            )
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入 PGN",
+            "",
+            "PGN 文件 (*.pgn);;所有文件 (*)",
+        )
+        if not path:
+            return
+        try:
+            text = Path(path).read_text(encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                text = Path(path).read_text(encoding="latin-1")
+            except OSError as exc:
+                QMessageBox.warning(self, "导入失败", f"无法读取文件：{exc}")
+                return
+        except OSError as exc:
+            QMessageBox.warning(self, "导入失败", f"无法读取文件：{exc}")
+            return
+
+        try:
+            tree = parse_pgn(text)
+        except (PGNImportError, ValueError) as exc:
+            QMessageBox.warning(self, "导入失败", str(exc))
+            return
+
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = bool(self.ai_enabled)
+        self.ai_used_colors.clear()
+        self._reset_analysis_state()
+        self.game_tree = tree
+        node = tree.latest_node()
+        tree.current = node
+        imported = tree.build_game(node)
+        self.board.set_game(imported, reviewing=False)
+        self._refresh_locks()
+        self._update_ai_status()
+        self._show_cached_eval(0)
+        self.statusBar().showMessage(
+            f"已导入棋谱（主线 {len(tree.mainline())} 手，"
+            f"{len(tree.root.children)} 个首着变例），"
+            "可点击棋谱节点回放",
+            6000,
+        )
+
+    def _tick_thinking(self) -> None:
+        if not self.ai_thinking:
+            return
+        self._thinking_dots = (self._thinking_dots + 1) % 4
+        self.ai_status.setText("Stockfish：思考中" + "·" * self._thinking_dots)
+
+    def _set_ai_thinking(self, thinking: bool) -> None:
+        self.ai_thinking = thinking
+        if thinking:
+            self._thinking_dots = 0
+            self.ai_status.setText("Stockfish：思考中")
+            self._thinking_timer.start()
+        else:
+            self._thinking_timer.stop()
+
+    def _cancel_ai_request(self) -> None:
+        if not self.ai_thinking:
+            return
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = True
+        self._refresh_locks()
+        self.ai_status.setText("Stockfish：已暂停，可手动走棋或点“重试”")
+        self._refresh_status()
+
+    def _retry_ai(self) -> None:
+        if not self.ai_enabled or self.ai_thinking or self.board.game_over:
+            return
+        if self.board.is_reviewing() or self.board.is_animating():
+            return
+        self._ai_paused = False
+        self._refresh_locks()
+        self.ai_status.setText("Stockfish：已启用")
+        self._maybe_request_ai()
+
+    def _new_game(self) -> None:
+        if self.online:
+            if not self.is_online_host:
+                self._network_system("只有房主可以开始新对局")
+                return
+            self.net_game_id += 1
+            self._reset_online_game(send=True, announce=True)
+            return
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = False
+        self.ai_used_colors.clear()
+        self._reset_analysis_state()
+        self.game_tree = GameTree()
+        self.board.new_game()
+        self._reset_local_clock()
+        self._refresh_locks()
+        self._apply_mode_controls()
+        self._update_ai_status()
+        self._refresh_status()
+        self._maybe_request_ai()
+
+    def _node_at_ply(self, ply: int) -> Optional[GameNode]:
+        node = self.game_tree.current
+        while node.parent is not None and node.ply > ply:
+            node = node.parent
+        if node.ply == ply:
+            return node
+        return None
+
+    def _go_to_node(
+        self,
+        node: GameNode,
+        truncate: bool = False,
+        resume_ai: bool = False,
+    ) -> None:
+        if truncate:
+            self.game_tree.truncate_after(node)
+        self.game_tree.current = node
+        self._prepare_navigation()
+        game = self.game_tree.build_game(node)
+        self.board.set_game(game, reviewing=bool(node.children))
+        self._update_ai_status()
+        if resume_ai and not self.board.is_reviewing():
+            self._maybe_request_ai()
+
+    def _undo(self) -> None:
+        if self.online:
+            self._request_online_undo()
+            return
+        current = self.game_tree.current
+        if current.parent is None:
+            return
+        target = current.parent
+        game = self.board.game
+        if (
+            not self.board.is_reviewing()
+            and self.ai_enabled
+            and self.match_mode == "human"
+            and not self._ai_paused
+            and game.turn == self.human_color
+        ):
+            if target.parent is None:
+                return
+            target = target.parent
+        self._go_to_node(target)
+
+    def _go_previous(self) -> None:
+        if self.online:
+            return
+        parent = self.game_tree.current.parent
+        if parent is None:
+            return
+        self._go_to_node(parent)
+
+    def _go_next(self) -> None:
+        if self.online or not self.game_tree.current.children:
+            return
+        self._go_to_node(
+            self.game_tree.current.children[0], resume_ai=True
+        )
+
+    def _go_first(self) -> None:
+        if self.online:
+            return
+        self._go_to_node(self.game_tree.root)
+
+    def _go_latest(self) -> None:
+        if self.online:
+            return
+        self._go_to_node(self.game_tree.latest_node(), resume_ai=True)
+
+    def _jump_to_ply(self, ply: int) -> None:
+        if self.online:
+            self.statusBar().showMessage("联机对局中暂不支持回放", 3000)
+            return
+        node = self.game_tree.root
+        while node.children and node.ply < ply:
+            node = node.children[0]
+        if node.ply == ply:
+            self._go_to_node(node, resume_ai=True)
+
+    def _on_notation_anchor(self, url) -> None:
+        text = url.toString()
+        if text.startswith("node:"):
+            try:
+                node_id = int(text[5:])
+            except ValueError:
+                return
+            node = self.game_tree.node_by_id(node_id)
+            if node is not None:
+                self._go_to_node(node, resume_ai=True)
+            return
+        if not text.startswith("ply:"):
+            return
+        try:
+            ply = int(text[4:])
+        except ValueError:
+            return
+        self._jump_to_ply(ply)
+
+    def _prepare_navigation(self) -> None:
+        self._ai_request_id += 1
+        self._clock_pending_move = False
+        self._set_ai_thinking(False)
+        self._analysis_token += 1
+        self._analysis_cancel.set()
+        self._analysis_timer.stop()
+        self._set_hint_busy(False)
+        self.board.set_hint(None)
+        self.hint_label.setText("提示：--")
+
+    def _refresh_nav_buttons(self) -> None:
+        node = self.game_tree.current
+        has_history = node.parent is not None
+        can_next = bool(node.children)
+        if self.online:
+            self.first_button.setEnabled(False)
+            self.prev_button.setEnabled(False)
+            self.next_button.setEnabled(False)
+            self.latest_button.setEnabled(False)
+        else:
+            self.first_button.setEnabled(has_history)
+            self.prev_button.setEnabled(has_history)
+            self.next_button.setEnabled(can_next)
+            self.latest_button.setEnabled(
+                node is not self.game_tree.latest_node()
+            )
+        self.copy_button.setEnabled(bool(self.game_tree.root.children))
+        can_undo = has_history and (
+            not self.online or not self.board.game_over
+        )
+        if (
+            self.ai_enabled
+            and self.match_mode == "human"
+            and not self._ai_paused
+            and not self.board.is_reviewing()
+            and self.board.game.turn == self.human_color
+            and node.ply < 2
+        ):
+            can_undo = False
+        self.undo_button.setEnabled(can_undo)
+        self.import_button.setEnabled(not self.online)
+        self.hint_button.setEnabled(
+            self.engine_path is not None
+            and not self._hint_busy
+            and not self.board.game_over
+            and not self.online
+        )
+
+    def _on_state_changed(self) -> None:
+        self.board.set_hint(None)
+        self.hint_label.setText("提示：--")
+        self._set_hint_busy(False)
+        self._analysis_token += 1
+        self._analysis_cancel.set()
+        self._analysis_timer.stop()
+        self._refresh_status()
+        self._refresh_notation()
+        self._refresh_nav_buttons()
+        self._refresh_captured()
+        if self.board.game_over:
+            tag = self.board.final_result()
+            if tag == "1-0":
+                self.eval_bar.set_evaluation(1500, None)
+                self.eval_label.setText("评估：白方胜")
+            elif tag == "0-1":
+                self.eval_bar.set_evaluation(-1500, None)
+                self.eval_label.setText("评估：黑方胜")
+            else:
+                self.eval_bar.set_evaluation(0, None)
+                self.eval_label.setText("评估：和棋")
+        else:
+            self._show_cached_eval(len(self.board.game.history))
+        if self.engine_path is not None:
+            self._schedule_auto_analysis()
+        if self.ai_enabled and not self.ai_thinking:
+            if self.board.is_reviewing():
+                self.ai_status.setText("Stockfish：复盘暂停")
+            elif self._ai_paused:
+                self.ai_status.setText(
+                    "Stockfish：已暂停，可手动走棋或点“重试”"
+                )
+        if self._clock_is_enabled():
+            if (
+                self._online_paused
+                or self.board.game_over
+                or self.board.is_reviewing()
+            ):
+                self.clock.stop()
+            else:
+                QTimer.singleShot(0, self._sync_clock_turn)
+        else:
+            self.clock.stop()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
+        self._schedule_session_save()
+        self._broadcast_spectator_state()
+        self._refresh_online_actions()
+
+    def _sync_clock_turn(self) -> None:
+        if not self._clock_is_enabled():
+            self._clock_pending_move = False
+            self.clock.stop()
+            return
+        if self._online_paused:
+            self._clock_pending_move = False
+            self.clock.stop()
+            return
+        if self.board.game_over or self.board.is_reviewing():
+            self._clock_pending_move = False
+            self.clock.stop()
+            return
+        game = self.board.game
+        if self._clock_pending_move and self.clock.is_running():
+            self._clock_pending_move = False
+            self.clock.complete_move(game.turn)
+            return
+        self._clock_pending_move = False
+        if self.online:
+            self.clock.set_turn(game.turn)
+        elif not game.history:
+            self.clock.stop()
+        elif not self.clock.is_running():
+            self.clock.start(game.turn)
+        else:
+            self.clock.set_turn(game.turn)
+
+    def _on_new_move(self) -> None:
+        self._clock_pending_move = True
+        game = self.board.game
+        move = game.last_move
+        if move is not None:
+            piece = game.piece_at(move.to_row, move.to_col)
+            color = ChessGame.color_of(piece) if piece else game.turn
+            san = game.san_history[-1] if game.san_history else ""
+            self.game_tree.add_move(
+                move, san, color, make_mainline=True
+            )
+            self.board.reviewing = False
+        ply = len(game.history)
+        for mapping in (
+            self._eval_scores,
+            self._eval_display,
+            self._move_annotations,
+        ):
+            for key in [key for key in mapping if key >= ply]:
+                del mapping[key]
+        self._set_hint_busy(False)
+
+    def _refresh_status(self) -> None:
+        text = self.board.status_text()
+        if self.ai_thinking:
+            text = f"{text} · Stockfish 思考中…"
+        if self.online:
+            text = f"{text} · 联机"
+        self.turn_label.setText(text)
+
+        if self.board.game_over:
+            self.statusBar().showMessage(text)
+        elif self.ai_thinking:
+            self.statusBar().showMessage("正在等待 Stockfish 计算…")
+        elif self.online:
+            if self.board.game.turn == self.local_color:
+                self.statusBar().showMessage("联机：轮到你走棋")
+            else:
+                self.statusBar().showMessage("联机：等待对方走棋")
+        elif self.board.is_reviewing():
+            total = len(
+                self.game_tree.path_to(
+                    self.game_tree.tip_from(self.game_tree.current)
+                )
+            )
+            self.statusBar().showMessage(
+                f"复盘：第 {self.game_tree.current.ply} / {total} 手"
+            )
+        elif self.board.game.in_check(self.board.game.turn):
+            self.statusBar().showMessage("将军！请先解除被将军的状态")
+        else:
+            self.statusBar().showMessage(
+                "点击或拖拽走子；可点击棋谱回放，提示按钮会显示最佳着"
+            )
+
+        self.cancel_ai_button.setEnabled(self.ai_enabled and self.ai_thinking)
+        self.retry_ai_button.setEnabled(
+            self.ai_enabled
+            and not self.ai_thinking
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+            and not self.board.is_animating()
+            and (self._ai_paused or self._ai_is_turn())
+        )
+        self._refresh_nav_buttons()
+        self._refresh_online_actions()
+
+    def _refresh_notation(self) -> None:
+        tree = self.game_tree
+        current = tree.current
+        path_ids = {node.node_id for node in tree.path_to(current)}
+        parts = [
+            '<div style="margin:0; font-family:Consolas,\'Courier New\',monospace; '
+            'font-size:12px; color:#e8ddc7; white-space: pre-wrap;">'
+        ]
+        tokens = self._notation_children(
+            root=True, force_first=True, path_ids=path_ids
+        )
+        if not tokens:
+            parts.append('<span style="color:#8d877d;">尚无着法</span>')
+        else:
+            parts.append(" ".join(tokens))
+            result = self.board.final_result() or tree.result
+            if result:
+                parts.append(
+                    f'\n<span style="color:#d8b26a;">结果：{result}</span>'
+                )
+        parts.append("</div>")
+        self.notation.setHtml("".join(parts))
+        if current.node_id != tree.root.node_id:
+            self.notation.scrollToAnchor(f"node-{current.node_id}")
+        else:
+            self.notation.verticalScrollBar().setValue(0)
+
+    def _notation_children(
+        self,
+        parent: Optional[GameNode] = None,
+        root: bool = False,
+        force_first: bool = False,
+        path_ids: Optional[set[int]] = None,
+    ) -> list[str]:
+        node = self.game_tree.root if root or parent is None else parent
+        if not node.children:
+            return []
+        if path_ids is None:
+            path_ids = {
+                item.node_id
+                for item in self.game_tree.path_to(self.game_tree.current)
+            }
+        tokens: list[str] = [
+            self._notation_node(node.children[0], force_first, path_ids)
+        ]
+        for variation in node.children[1:]:
+            tokens.append("(")
+            tokens.append(
+                self._notation_node(variation, True, path_ids)
+            )
+            tokens.extend(
+                self._notation_children(variation, path_ids=path_ids)
+            )
+            tokens.append(")")
+        tokens.extend(
+            self._notation_children(node.children[0], path_ids=path_ids)
+        )
+        return tokens
+
+    def _notation_node(
+        self, node: GameNode, force_number: bool, path_ids: set[int]
+    ) -> str:
+        number = self.game_tree.move_number(node)
+        if node.color == "w":
+            prefix = f"{number}. "
+        elif force_number:
+            prefix = f"{number}... "
+        else:
+            prefix = ""
+        style = "color:#e8ddc7; text-decoration:none;"
+        if node.node_id not in path_ids:
+            style = "color:#77716a; text-decoration:none;"
+        if node.node_id == self.game_tree.current.node_id:
+            style = (
+                "color:#ffffff; text-decoration:none;"
+                " background-color:#4d5b35;"
+            )
+        annotation = self._move_annotations.get(node.ply)
+        suffix = ""
+        if annotation:
+            colors = {
+                "??": "#ff6b6b",
+                "?": "#ff9f43",
+                "?!": "#e8c547",
+                "!": "#7bd88f",
+            }
+            color = colors.get(annotation, "#e8c547")
+            suffix = (
+                f'<span style="color:{color};">{annotation}</span>'
+            )
+        nag_symbols = {1: "!", 2: "?", 3: "!!", 4: "??", 5: "!?", 6: "?!"}
+        if node.nags:
+            suffix += "".join(
+                nag_symbols.get(nag, f"${nag}") for nag in node.nags
+            )
+        escaped = html_module.escape(node.san)
+        link = (
+            f'<a name="node-{node.node_id}" href="node:{node.node_id}" '
+            f'style="{style}">{escaped}</a>{suffix}'
+        )
+        if node.comment:
+            link += (
+                f' <span style="color:#8d877d;">'
+                f"{{{html_module.escape(node.comment)}}}</span>"
+            )
+        return prefix + link
+
+    def _refresh_captured(self) -> None:
+        by_white, by_black = self.board.game.captured_pieces()
+        self.captured_widget.set_captured(by_white, by_black)
+
+    def _on_mode_changed(self, index: int) -> None:
+        if self._loading_settings or self.online:
+            return
+        desired = self.mode_combo.itemData(index)
+        if desired is None or desired == self.match_mode:
+            return
+        if desired in ("human", "engine"):
+            engine = find_stockfish()
+            if engine is None:
+                QMessageBox.warning(
+                    self,
+                    "缺少 Stockfish 引擎",
+                    "未找到 Stockfish 可执行文件。请将 stockfish.exe 放入 "
+                    "stockfish/ 目录，或设置 STOCKFISH_PATH 环境变量。",
+                )
+                self._restore_mode_combo()
+                return
+            self.engine_path = engine
+        if self.board.game.history:
+            answer = QMessageBox.question(
+                self,
+                "切换模式",
+                "切换模式会重新开始对局，是否继续？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self._restore_mode_combo()
+                return
+
+        self.match_mode = desired
+        self.ai_enabled = desired in ("human", "engine")
+        if desired == "human":
+            self.human_color = self.side_combo.currentData() or self.human_color
+            self.ai_color = "w" if self.human_color == "b" else "b"
+            self.board.flipped = self.human_color == "b"
+        elif desired == "engine":
+            self.board.flipped = False
+        self.eval_bar.set_flipped(self.board.flipped)
+        self._new_game()
+
+    def _restore_mode_combo(self) -> None:
+        self.mode_combo.blockSignals(True)
+        index = self.mode_combo.findData(self.match_mode)
+        if index >= 0:
+            self.mode_combo.setCurrentIndex(index)
+        self.mode_combo.blockSignals(False)
+
+    def _on_human_side_changed(self, index: int) -> None:
+        if self._loading_settings or self.online:
+            return
+        desired = self.side_combo.itemData(index)
+        if desired is None or desired == self.human_color:
+            return
+        if self.match_mode != "human":
+            self.human_color = desired
+            self.ai_color = "w" if desired == "b" else "b"
+            return
+        if self.board.game.history:
+            answer = QMessageBox.question(
+                self,
+                "更换执子",
+                "更换执子会重新开始对局，是否继续？",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.side_combo.blockSignals(True)
+                previous = self.side_combo.findData(self.human_color)
+                if previous >= 0:
+                    self.side_combo.setCurrentIndex(previous)
+                self.side_combo.blockSignals(False)
+                return
+
+        self.human_color = desired
+        self.ai_color = "w" if desired == "b" else "b"
+        self.board.flipped = desired == "b"
+        self.eval_bar.set_flipped(self.board.flipped)
+        self._new_game()
+
+    def _on_difficulty_changed(self, index: int) -> None:
+        if self._loading_settings or self.online:
+            return
+        level = self.difficulty_combo.itemData(index)
+        if level:
+            self.difficulty = level
+            self._update_ai_status()
+
+    def _on_theme_changed(self, index: int) -> None:
+        if self._loading_settings:
+            return
+        theme = self.theme_combo.itemData(index)
+        if theme:
+            self.board.set_theme(theme)
+
+    def _apply_mode_controls(self) -> None:
+        human_mode = self.match_mode == "human" and not self.online
+        engine_mode = self.match_mode == "engine" and not self.online
+        self.mode_combo.setEnabled(not self.online)
+        self.side_combo.setEnabled(human_mode)
+        self.difficulty_combo.setEnabled(human_mode or engine_mode)
+        self._refresh_clock_controls()
+        self._refresh_status()
+
+    def _refresh_locks(self) -> None:
+        if not self.ai_enabled or self._ai_paused:
+            self.board.locked_color = None
+            self.board.input_locked = False
+        elif self.match_mode == "engine":
+            self.board.locked_color = None
+            self.board.input_locked = True
+        else:
+            self.board.locked_color = self.ai_color
+            self.board.input_locked = False
+
+    def _update_ai_status(self) -> None:
+        if self.ai_thinking:
+            return
+        if self.online:
+            side = "白" if self.local_color == "w" else "黑"
+            if self.board.game_over:
+                text = "联机：对局结束"
+            else:
+                text = f"联机：已连接（你执{side}）"
+            self.ai_status.setText(text)
+            return
+        if not self.ai_enabled:
+            text = "Stockfish：未启用"
+        elif self.board.game_over:
+            text = "Stockfish：对局结束"
+        elif self._ai_paused:
+            text = "Stockfish：已暂停，可手动走棋或点“重试”"
+        elif self.board.is_reviewing():
+            text = "Stockfish：复盘暂停"
+        elif self.match_mode == "engine":
+            text = f"Stockfish：引擎互弈（{self.difficulty}）"
+        else:
+            side = "黑" if self.ai_color == "b" else "白"
+            text = f"Stockfish：已启用（AI 执{side}，{self.difficulty}）"
+        self.ai_status.setText(text)
+
+    def _ai_is_turn(self) -> bool:
+        if not self.ai_enabled or self._ai_paused or self.board.game_over:
+            return False
+        if self.match_mode == "engine":
+            return True
+        if self.match_mode == "human":
+            return self.board.game.turn == self.ai_color
+        return False
+
+    def _show_cached_eval(self, ply: int) -> None:
+        data = self._eval_display.get(ply)
+        if data is None:
+            self.eval_bar.reset()
+            self.eval_label.setText("评估：--")
+        else:
+            self.eval_bar.set_evaluation(*data)
+            self.eval_label.setText(self._format_eval(*data))
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
+
+    @staticmethod
+    def _format_eval(cp: Optional[int], mate: Optional[int]) -> str:
+        if mate is not None:
+            side = "白方" if mate > 0 else "黑方"
+            return f"评估：{side}将死（{abs(mate)}）"
+        if cp is not None:
+            if cp >= 50:
+                advantage = "白优"
+            elif cp <= -50:
+                advantage = "黑优"
+            else:
+                advantage = "均势"
+            return f"评估：{cp / 100:+.2f}（{advantage}）"
+        return "评估：--"
+
+    @staticmethod
+    def _short_eval(cp: Optional[int], mate: Optional[int]) -> str:
+        if mate is not None:
+            return f"{'白' if mate > 0 else '黑'}方将死"
+        if cp is not None:
+            return f"{cp / 100:+.2f}"
+        return "--"
+
+    @staticmethod
+    def _score_symbol(loss: int) -> str:
+        if loss >= 200:
+            return "??"
+        if loss >= 100:
+            return "?"
+        if loss >= 50:
+            return "?!"
+        if loss <= -60:
+            return "!"
+        return ""
+
+    def _reset_analysis_state(self) -> None:
+        self._analysis_token += 1
+        self._analysis_cancel.set()
+        self._analysis_timer.stop()
+        self._eval_scores.clear()
+        self._eval_display.clear()
+        self._move_annotations.clear()
+        self._set_hint_busy(False)
+        self.eval_bar.reset()
+        self.eval_label.setText("评估：--")
+        self.eval_graph.clear()
+        self.accuracy_label.setText("准确率：--")
+        self.accuracy_label.setToolTip("")
+        self.hint_label.setText("提示：--")
+        self.hint_label.setToolTip("")
+        self.board.set_hint(None)
+
+    def _schedule_auto_analysis(self) -> None:
+        self._auto_analysis_token = self._analysis_token
+        self._analysis_timer.stop()
+        if (
+            not self.online
+            and self.engine_path is not None
+            and not self.board.game_over
+        ):
+            self._analysis_timer.start()
+
+    def _auto_analysis_timeout(self) -> None:
+        if self.online or self._auto_analysis_token != self._analysis_token:
+            return
+        if self._hint_busy or self.ai_thinking:
+            return
+        if (
+            self.ai_enabled
+            and not self.board.is_reviewing()
+            and self._ai_is_turn()
+        ):
+            return
+        self._start_analysis(self._auto_analysis_token, False)
+
+    def _start_analysis(self, token: int, explicit: bool) -> None:
+        self._analysis_cancel.set()
+        cancel_event = threading.Event()
+        self._analysis_cancel = cancel_event
+        moves = [
+            ChessGame.move_to_uci(move) for _, move in self.board.game.history
+        ]
+        thread = threading.Thread(
+            target=self._analysis_worker,
+            args=(token, moves, explicit, cancel_event),
+            daemon=True,
+        )
+        thread.start()
+
+    def _analysis_worker(
+        self,
+        token: int,
+        moves: list[str],
+        explicit: bool,
+        cancel_event: threading.Event,
+    ) -> None:
+        try:
+            result = analyse_position(
+                moves=moves,
+                movetime_ms=900 if explicit else 320,
+                cancel_event=cancel_event,
+                multipv=3 if explicit else 1,
+            )
+        except Exception as exc:
+            self.analysisReady.emit(token, str(exc), explicit)
+            return
+        self.analysisReady.emit(token, result, explicit)
+
+    def _on_analysis_ready(
+        self, token: int, payload: object, explicit: bool
+    ) -> None:
+        if token != self._analysis_token:
+            return
+        if explicit:
+            self._set_hint_busy(False)
+        if not isinstance(payload, AnalysisResult):
+            if explicit:
+                self.hint_label.setText("提示：分析失败")
+                self.statusBar().showMessage(f"分析失败：{payload}", 6000)
+            return
+        self._apply_analysis_result(payload, explicit)
+
+    def _apply_analysis_result(
+        self, result: AnalysisResult, explicit: bool
+    ) -> None:
+        game = self.board.game
+        ply = len(game.history)
+        cp = result.score_cp
+        mate = result.mate
+        if game.turn == "b":
+            if cp is not None:
+                cp = -cp
+            if mate is not None:
+                mate = -mate
+
+        display_lines: list[AnalysisLine] = []
+        for line in result.lines:
+            line_cp = line.score_cp
+            line_mate = line.mate
+            if game.turn == "b":
+                if line_cp is not None:
+                    line_cp = -line_cp
+                if line_mate is not None:
+                    line_mate = -line_mate
+            display_lines.append(
+                AnalysisLine(
+                    multipv=line.multipv,
+                    score_cp=line_cp,
+                    mate=line_mate,
+                    pv=line.pv,
+                )
+            )
+
+        self.eval_bar.set_evaluation(cp, mate)
+        self.eval_label.setText(self._format_eval(cp, mate))
+        self._eval_display[ply] = (cp, mate)
+
+        if mate is not None:
+            value = 1000 if mate > 0 else -1000 if mate < 0 else 0
+        else:
+            value = cp
+
+        notation_changed = False
+        if value is not None:
+            before = self._eval_scores.get(ply - 1)
+            self._eval_scores[ply] = value
+            node = self.game_tree.current
+            if before is not None and ply > 0 and not node.is_root:
+                mover = node.color
+                loss = before - value if mover == "w" else value - before
+                symbol = self._score_symbol(loss)
+                if symbol:
+                    self._move_annotations[ply] = symbol
+                else:
+                    self._move_annotations.pop(ply, None)
+                notation_changed = True
+
+        self._refresh_eval_graph()
+        self._refresh_accuracy()
+        if notation_changed:
+            self._refresh_notation()
+
+        if explicit:
+            moves: list[Move] = []
+            for line in display_lines:
+                if not line.pv:
+                    continue
+                move = game.find_move_by_uci(line.pv[0])
+                if move is not None and move not in moves:
+                    moves.append(move)
+            if not moves:
+                fallback = game.find_move_by_uci(result.bestmove)
+                if fallback is not None:
+                    moves.append(fallback)
+            if moves:
+                self.board.set_hint_moves(moves[:3])
+                primary = moves[0]
+                san = game.san_for_move(primary)
+                self.hint_label.setText(
+                    f"建议：{san}（{self._short_eval(cp, mate)}）"
+                )
+                tooltip_lines: list[str] = []
+                for index, line in enumerate(display_lines[:3]):
+                    if line.pv:
+                        line_move = game.find_move_by_uci(line.pv[0])
+                        line_san = (
+                            game.san_for_move(line_move)
+                            if line_move is not None
+                            else line.pv[0]
+                        )
+                    else:
+                        line_san = "?"
+                    tooltip_lines.append(
+                        f"{index + 1}. {line_san} "
+                        f"({self._short_eval(line.score_cp, line.mate)})"
+                    )
+                self.hint_label.setToolTip("\n".join(tooltip_lines))
+            else:
+                self.board.set_hint_moves([])
+                self.hint_label.setText("提示：当前局面没有可用着法")
+                self.hint_label.setToolTip("")
+
+    def _refresh_eval_graph(self) -> None:
+        self.eval_graph.set_scores(
+            self._eval_scores, self.game_tree.current.ply
+        )
+
+    def _accuracy_stats(self) -> dict[str, tuple[float, int, float]]:
+        totals = {
+            "w": [0.0, 0],
+            "b": [0.0, 0],
+        }
+        for node in self.game_tree.mainline():
+            before = self._eval_scores.get(node.ply - 1)
+            after = self._eval_scores.get(node.ply)
+            if before is None or after is None:
+                continue
+            loss = before - after if node.color == "w" else after - before
+            loss = max(0.0, min(1000.0, float(loss)))
+            totals[node.color][0] += loss
+            totals[node.color][1] += 1
+        stats: dict[str, tuple[float, int, float]] = {}
+        for color, (loss_sum, count) in totals.items():
+            if count:
+                acpl = loss_sum / count
+                accuracy = 100.0 * math.exp(-acpl / 200.0)
+                stats[color] = (acpl, count, accuracy)
+            else:
+                stats[color] = (0.0, 0, 0.0)
+        return stats
+
+    def _refresh_accuracy(self) -> None:
+        stats = self._accuracy_stats()
+        parts: list[str] = []
+        tooltip: list[str] = []
+        for color, label in (("w", "白"), ("b", "黑")):
+            acpl, count, accuracy = stats[color]
+            if count:
+                parts.append(f"{label} {accuracy:.0f}")
+                tooltip.append(
+                    f"{label}方：准确率 {accuracy:.1f}%，"
+                    f"平均损失 {acpl:.0f} cp（{count} 手）"
+                )
+            else:
+                parts.append(f"{label} --")
+        self.accuracy_label.setText("准确率：" + " / ".join(parts))
+        self.accuracy_label.setToolTip("\n".join(tooltip))
+
+    def _request_hint(self) -> None:
+        if self.online:
+            self.statusBar().showMessage("联机对局中已关闭引擎提示", 4000)
+            return
+        if (
+            self._hint_busy
+            or self.engine_path is None
+            or self.board.game_over
+        ):
+            return
+        self._analysis_timer.stop()
+        self._analysis_token += 1
+        token = self._analysis_token
+        self._set_hint_busy(True)
+        self.hint_label.setText("提示：分析中…")
+        self._start_analysis(token, True)
+
+    def _set_hint_busy(self, busy: bool) -> None:
+        self._hint_busy = busy
+        self.hint_button.setText("分析中…" if busy else "提示")
+        self.hint_button.setEnabled(
+            not busy
+            and self.engine_path is not None
+            and not self.board.game_over
+        )
+
+    def _schedule_session_save(self) -> None:
+        if self._loading_settings or self._session_restoring:
+            return
+        self._session_save_timer.start()
+
+    def _save_session(self) -> None:
+        if self._loading_settings or self._session_restoring:
+            return
+        tree = self.game_tree
+        if (
+            not tree.root.children
+            and not self.board.result_override
+            and tree.start_fen == ChessGame.START_FEN
+        ):
+            clear_state()
+            return
+        if not tree.current.children:
+            result = self.board.final_result()
+            if result:
+                tree.result = result
+        state = {
+            "tree": tree.to_dict(),
+            "match_mode": "two" if self.online else self.match_mode,
+            "human_color": self.human_color,
+            "difficulty": self.difficulty,
+            "ai_paused": self._ai_paused,
+            "flipped": bool(self.board.flipped),
+            "result_override": self.board.result_override or "",
+            "finish_message": self.board._finish_message or "",
+            "clock_enabled": self._clock_is_enabled(),
+            "clock_base": self.clock.base_seconds,
+            "clock_increment": self.clock.increment,
+            "clock_white": self.clock.remaining_seconds("w"),
+            "clock_black": self.clock.remaining_seconds("b"),
+        }
+        save_state(state)
+
+    def _restore_session(self) -> bool:
+        data = load_state()
+        if not data:
+            return False
+
+        try:
+            tree_data = data.get("tree")
+            if isinstance(tree_data, dict):
+                tree = GameTree.from_dict(tree_data)
+            else:
+                start_fen = data.get("start_fen")
+                if not isinstance(start_fen, str) or not start_fen.strip():
+                    start_fen = ChessGame.START_FEN
+                moves = data.get("moves", [])
+                if (
+                    not isinstance(moves, list)
+                    or len(moves) > 10000
+                    or any(not isinstance(item, str) for item in moves)
+                ):
+                    raise ValueError("保存的着法无效")
+                tree = GameTree(start_fen)
+                node = tree.root
+                game = tree.build_game(node)
+                for uci in moves:
+                    move = game.find_move_by_uci(uci)
+                    if move is None:
+                        raise ValueError(f"无法恢复着法：{uci}")
+                    turn = game.turn
+                    game.make_move(move)
+                    node = tree.append_move(
+                        node, move, game.san_history[-1], turn
+                    )
+                ply = data.get("ply")
+                if isinstance(ply, int) and not isinstance(ply, bool):
+                    path = [tree.root, *tree.path_to(node)]
+                    if 0 <= ply < len(path):
+                        node = path[ply]
+                tree.current = node
+        except (ValueError, IndexError, TypeError):
+            clear_state()
+            self.statusBar().showMessage(
+                "上次对局无法恢复，已开始新对局", 6000
+            )
+            return False
+
+        game = tree.build_game(tree.current)
+
+        mode = data.get("match_mode")
+        if mode not in ("two", "human", "engine"):
+            mode = "two"
+        if mode in ("human", "engine") and self.engine_path is None:
+            mode = "two"
+
+        human_color = data.get("human_color")
+        if human_color not in ("w", "b"):
+            human_color = self.human_color
+        difficulty = data.get("difficulty")
+        if difficulty not in AI_LEVELS:
+            difficulty = self.difficulty
+
+        self.match_mode = mode
+        self.ai_enabled = mode in ("human", "engine")
+        self.human_color = human_color
+        self.ai_color = "w" if human_color == "b" else "b"
+        self.difficulty = difficulty
+        if mode == "human":
+            self.ai_used_colors = {self.ai_color}
+        elif mode == "engine":
+            self.ai_used_colors = {"w", "b"}
+        else:
+            self.ai_used_colors = set()
+
+        for combo, value in (
+            (self.mode_combo, mode),
+            (self.side_combo, human_color),
+            (self.difficulty_combo, difficulty),
+        ):
+            combo.blockSignals(True)
+            index = combo.findData(value)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            combo.blockSignals(False)
+
+        flipped = data.get("flipped")
+        if isinstance(flipped, bool):
+            self.board.flipped = flipped
+        elif mode == "human":
+            self.board.flipped = human_color == "b"
+        self.eval_bar.set_flipped(self.board.flipped)
+
+        self.game_tree = tree
+        self._ai_paused = bool(data.get("ai_paused")) and self.ai_enabled
+        self._session_restoring = True
+        try:
+            self.board.set_game(
+                game, reviewing=self.game_tree.is_reviewing()
+            )
+            override = data.get("result_override")
+            if (
+                isinstance(override, str)
+                and override
+                and not self.game_tree.current.children
+            ):
+                self.board.result_override = override
+                self.board._finish_message = str(
+                    data.get("finish_message") or ""
+                )
+                self.board.game_over = True
+        finally:
+            self._session_restoring = False
+
+        clock_enabled = bool(data.get("clock_enabled"))
+        self.clock_checkbox.blockSignals(True)
+        self.clock_checkbox.setChecked(clock_enabled)
+        self.clock_checkbox.blockSignals(False)
+
+        try:
+            base = max(
+                1,
+                int(
+                    data.get(
+                        "clock_base",
+                        self.clock_minutes_spin.value() * 60,
+                    )
+                ),
+            )
+            increment = max(0, int(data.get("clock_increment", 0)))
+        except (TypeError, ValueError):
+            base = self.clock_minutes_spin.value() * 60
+            increment = self.clock_increment_spin.value()
+
+        for spin, value in (
+            (self.clock_minutes_spin, max(1, min(180, base // 60))),
+            (self.clock_increment_spin, max(0, min(60, increment))),
+        ):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
+
+        self.clock.reset(base, increment)
+        try:
+            remaining_white = float(data.get("clock_white", base))
+            remaining_black = float(data.get("clock_black", base))
+        except (TypeError, ValueError):
+            remaining_white = remaining_black = float(base)
+        self.clock.remaining = {
+            "w": max(0.0, remaining_white),
+            "b": max(0.0, remaining_black),
+        }
+        if (
+            clock_enabled
+            and game.history
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            self.clock.start(game.turn)
+
+        self._update_clock_caption()
+        self._update_clock_labels()
+        self._refresh_clock_controls()
+        self._on_state_changed()
+        self.statusBar().showMessage("已恢复上次对局", 5000)
+        if (
+            self.ai_enabled
+            and not self._ai_paused
+            and not self.board.game_over
+            and not self.board.is_reviewing()
+        ):
+            QTimer.singleShot(0, self._maybe_request_ai)
+        return True
+
+    def _show_fen_dialog(self) -> None:
+        if self.online:
+            QMessageBox.information(
+                self, "联机中", "联机对局中不能通过 FEN 更换局面。"
+            )
+            return
+        dialog = FenDialog(self.board.game.to_fen(), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        try:
+            tree = GameTree(dialog.fen)
+        except ValueError as exc:
+            QMessageBox.warning(self, "FEN 无效", str(exc))
+            return
+
+        self._ai_request_id += 1
+        self._set_ai_thinking(False)
+        self._ai_paused = False
+        self.ai_used_colors.clear()
+        self._reset_analysis_state()
+        self.game_tree = tree
+        self.board.set_game(tree.build_game(tree.root), reviewing=False)
+        self._reset_local_clock()
+        self._refresh_locks()
+        self._apply_mode_controls()
+        self._update_ai_status()
+        self._refresh_status()
+        self._refresh_notation()
+        self._refresh_nav_buttons()
+        self._refresh_captured()
+        self._show_cached_eval(0)
+        self._maybe_request_ai()
+
+    def _load_settings(self) -> None:
+        settings = self._settings
+
+        theme = str(settings.value("theme", "经典"))
+        if theme in THEMES:
+            index = self.theme_combo.findData(theme)
+            if index >= 0:
+                self.theme_combo.setCurrentIndex(index)
+            self.board.set_theme(theme)
+
+        coordinates = bool(int(settings.value("show_coordinates", 1)))
+        self.coords_checkbox.setChecked(coordinates)
+        self.board.set_coordinates(coordinates)
+
+        sound = bool(int(settings.value("sound", 1)))
+        self.sound_checkbox.setChecked(sound)
+        self.sound_player.set_enabled(sound)
+
+        clock_enabled = bool(int(settings.value("clock_enabled", 0)))
+        self.clock_checkbox.setChecked(clock_enabled)
+        self.clock_minutes_spin.setValue(
+            max(1, min(180, int(settings.value("clock_minutes", 10))))
+        )
+        self.clock_increment_spin.setValue(
+            max(0, min(60, int(settings.value("clock_increment", 0))))
+        )
+        self._refresh_clock_controls()
+        self._update_clock_caption()
+        self._update_clock_labels()
+
+        difficulty = str(settings.value("difficulty", "普通"))
+        index = self.difficulty_combo.findData(difficulty)
+        if index >= 0:
+            self.difficulty_combo.setCurrentIndex(index)
+        self.difficulty = self.difficulty_combo.currentData() or "普通"
+
+        human_color = str(settings.value("human_color", "w"))
+        index = self.side_combo.findData(human_color)
+        if index >= 0:
+            self.side_combo.setCurrentIndex(index)
+        self.human_color = self.side_combo.currentData() or "w"
+        self.ai_color = "w" if self.human_color == "b" else "b"
+
+        self.board.flipped = bool(int(settings.value("flipped", 0)))
+        self.eval_bar.set_flipped(self.board.flipped)
+
+        geometry = settings.value("geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+
+    def _save_settings(self) -> None:
+        settings = self._settings
+        settings.setValue("theme", self.board.theme_name)
+        settings.setValue(
+            "show_coordinates", int(self.board.show_coordinates)
+        )
+        settings.setValue("sound", int(self.sound_player.enabled))
+        settings.setValue(
+            "clock_enabled", int(self.clock_checkbox.isChecked())
+        )
+        settings.setValue("clock_minutes", self.clock_minutes_spin.value())
+        settings.setValue("clock_increment", self.clock_increment_spin.value())
+        settings.setValue("difficulty", self.difficulty)
+        settings.setValue("human_color", self.human_color)
+        settings.setValue("flipped", int(self.board.flipped))
+        settings.setValue("geometry", self.saveGeometry())
+        settings.sync()
+
+    def _maybe_request_ai(self) -> None:
+        if self.ai_thinking or self.board.is_animating():
+            return
+        if self.board.is_reviewing() or not self._ai_is_turn():
+            return
+
+        game = self.board.game
+        legal_moves = game.all_legal_moves()
+        if not legal_moves:
+            return
+
+        played_moves = [
+            ChessGame.move_to_uci(move) for _, move in game.history
+        ]
+        skill_level, movetime_ms = AI_LEVELS.get(
+            self.difficulty, AI_LEVELS["普通"]
+        )
+
+        self._ai_request_id += 1
+        request_id = self._ai_request_id
+        self._refresh_locks()
+        self._set_ai_thinking(True)
+        self._refresh_status()
+
+        thread = threading.Thread(
+            target=self._ai_worker,
+            args=(request_id, played_moves, skill_level, movetime_ms),
+            daemon=True,
+        )
+        thread.start()
+
+    def _ai_worker(
+        self,
+        request_id: int,
+        played_moves: list[str],
+        skill_level: int,
+        movetime_ms: int,
+    ) -> None:
+        try:
+            bestmove = ask_stockfish_for_move(
+                moves=played_moves,
+                skill_level=skill_level,
+                movetime_ms=movetime_ms,
+            )
+        except Exception as exc:  # engine missing, timeout, protocol errors
+            self.aiResponse.emit(
+                request_id, None, f"{type(exc).__name__}: {exc}"
+            )
+            return
+        self.aiResponse.emit(request_id, bestmove, "")
+
+    def _on_ai_response(
+        self, request_id: int, content: object, error: str
+    ) -> None:
+        if request_id != self._ai_request_id:
+            return
+        self._set_ai_thinking(False)
+        if not self.ai_enabled or self._ai_paused:
+            return
+
+        game = self.board.game
+        if self.board.game_over or self.board.is_reviewing():
+            self._update_ai_status()
+            return
+        if self.match_mode == "human" and game.turn != self.ai_color:
+            self._update_ai_status()
+            return
+
+        uci = str(content).strip() if content is not None else ""
+        if uci:
+            uci = uci.split()[0]
+        move = game.find_move_by_uci(uci) if uci else None
+
+        if move is None:
+            reason = error.strip() if error else "Stockfish 返回了无效着法"
+            reason = reason.splitlines()[0][:120] if reason else "未知错误"
+            legal_moves = game.all_legal_moves()
+            if legal_moves:
+                move = random.choice(legal_moves)
+                self.ai_status.setText(
+                    f"Stockfish 请求失败，已随机落子：{reason}"
+                )
+            else:
+                self.ai_status.setText(f"Stockfish 请求失败：{reason}")
+                self._refresh_status()
+                return
+        else:
+            self.ai_status.setText("Stockfish：已落子")
+
+        self.ai_used_colors.add(game.turn)
+        self.board.execute_move(move)
+
+    def _on_game_ended(self, message: str) -> None:
+        self._set_ai_thinking(False)
+        result = self.board.final_result()
+        if result:
+            self.game_tree.result = result
+        if self.online:
+            self.clock.stop()
+        self._refresh_status()
+        self._refresh_notation()
+        if self.online:
+            self.ai_status.setText("联机：对局结束")
+        elif self.ai_enabled:
+            self.ai_status.setText("Stockfish：对局结束")
+        QMessageBox.information(
+            self._lan_dialog_parent(), "对局结束", message
+        )
+
+    def closeEvent(self, event) -> None:
+        self._session_save_timer.stop()
+        self._save_session()
+        self._save_settings()
+        self._stop_spectator_server()
+        if self._spectator_dialog is not None:
+            self._spectator_dialog.close()
+        if self._network_dialog is not None:
+            self._network_dialog.hide()
+        self.lan.shutdown()
+        self.online = False
+        self._ai_request_id += 1
+        self._analysis_token += 1
+        self._analysis_cancel.set()
+        self._analysis_timer.stop()
+        self.ai_enabled = False
+        self._set_ai_thinking(False)
+        self.board.locked_color = None
+        self.board.input_locked = False
+        super().closeEvent(event)
+
+
+# ---- main.py ----
+
+import sys
+
+from PyQt6.QtWidgets import QApplication
+
+
+
+def _engine_check() -> None:
+    import tempfile
+
+    engine = find_stockfish()
+    lines = [f"engine={engine}"]
+    lines.extend(f"dir={directory}" for directory in _stockfish_search_dirs())
+    if engine is not None:
+        try:
+            session = _EngineSession(engine)
+            result = session.search(None, [], 300, None, None)
+            session.close()
+            lines.append(f"bestmove={result.bestmove}")
+        except Exception as exc:
+            lines.append(f"engine_error={type(exc).__name__}: {exc}")
+    target = Path(tempfile.gettempdir()) / "chess_engine_check.txt"
+    target.write_text("\n".join(lines), encoding="utf-8")
+
+
+def main() -> None:
+    if "--engine-check" in sys.argv:
+        _engine_check()
+        return
+    app = QApplication(sys.argv)
+    app.setApplicationName("国际象棋")
+    app.setStyle("Fusion")
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()
