@@ -1829,7 +1829,9 @@ class MainWindow(QMainWindow):
             '<div style="margin:0; font-family:Consolas,\'Courier New\',monospace; '
             'font-size:12px; color:#e8ddc7; white-space: pre-wrap;">'
         ]
-        tokens = self._notation_children(root=True, force_first=True)
+        tokens = self._notation_children(
+            root=True, force_first=True, path_ids=path_ids
+        )
         if not tokens:
             parts.append('<span style="color:#8d877d;">尚无着法</span>')
         else:
@@ -1851,14 +1853,16 @@ class MainWindow(QMainWindow):
         parent: Optional[GameNode] = None,
         root: bool = False,
         force_first: bool = False,
+        path_ids: Optional[set[int]] = None,
     ) -> list[str]:
         node = self.game_tree.root if root or parent is None else parent
         if not node.children:
             return []
-        current = self.game_tree.current
-        path_ids = {
-            item.node_id for item in self.game_tree.path_to(current)
-        }
+        if path_ids is None:
+            path_ids = {
+                item.node_id
+                for item in self.game_tree.path_to(self.game_tree.current)
+            }
         tokens: list[str] = [
             self._notation_node(node.children[0], force_first, path_ids)
         ]
@@ -1867,9 +1871,13 @@ class MainWindow(QMainWindow):
             tokens.append(
                 self._notation_node(variation, True, path_ids)
             )
-            tokens.extend(self._notation_children(variation))
+            tokens.extend(
+                self._notation_children(variation, path_ids=path_ids)
+            )
             tokens.append(")")
-        tokens.extend(self._notation_children(node.children[0]))
+        tokens.extend(
+            self._notation_children(node.children[0], path_ids=path_ids)
+        )
         return tokens
 
     def _notation_node(
@@ -2440,13 +2448,15 @@ class MainWindow(QMainWindow):
                     raise ValueError("保存的着法无效")
                 tree = GameTree(start_fen)
                 node = tree.root
+                game = tree.build_game(node)
                 for uci in moves:
-                    game = tree.build_game(node)
                     move = game.find_move_by_uci(uci)
                     if move is None:
                         raise ValueError(f"无法恢复着法：{uci}")
+                    turn = game.turn
+                    game.make_move(move)
                     node = tree.append_move(
-                        node, move, game.san_for_move(move), game.turn
+                        node, move, game.san_history[-1], turn
                     )
                 ply = data.get("ply")
                 if isinstance(ply, int) and not isinstance(ply, bool):
@@ -2757,7 +2767,6 @@ class MainWindow(QMainWindow):
             self._update_ai_status()
             return
 
-        legal_moves = game.all_legal_moves()
         uci = str(content).strip() if content is not None else ""
         if uci:
             uci = uci.split()[0]
@@ -2766,6 +2775,7 @@ class MainWindow(QMainWindow):
         if move is None:
             reason = error.strip() if error else "Stockfish 返回了无效着法"
             reason = reason.splitlines()[0][:120] if reason else "未知错误"
+            legal_moves = game.all_legal_moves()
             if legal_moves:
                 move = random.choice(legal_moves)
                 self.ai_status.setText(

@@ -41,6 +41,14 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 
 勾选“记住 API Key”时，程序优先保存到系统凭据管理器（Windows Credential Manager）；如果不可用，则退回到本地 QSettings。生成 DeepSeek 报告时会发送棋谱、FEN、Stockfish 评估和标注，不包含本机文件或个人信息。
 
+## 测试
+
+使用标准库 `unittest`，无需额外依赖：
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
 ## 项目结构
 
 | 文件 | 说明 |
@@ -60,6 +68,7 @@ $env:DEEPSEEK_API_KEY = "your-api-key"
 | `pgn_import.py` / `pgn_export.py` | PGN 导入导出 |
 | `session_store.py` | 自动保存/恢复 |
 | `sound_player.py` | 音效 |
+| `tests/` | 棋规、PGN 与棋谱树回归测试 |
 
 ## 许可证
 

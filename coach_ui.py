@@ -336,15 +336,15 @@ class CoachDialog(QDialog):
         return self._session_key or self._saved_key() or env_api_key()
 
     def _update_status(self) -> None:
-        key = self._effective_key()
+        saved_key = self._saved_key()
+        key = self._session_key or saved_key or env_api_key()
         if key:
-            source = (
-                "本次会话"
-                if self._session_key
-                else "本地设置"
-                if self._saved_key()
-                else "环境变量"
-            )
+            if self._session_key:
+                source = "本次会话"
+            elif saved_key:
+                source = "本地设置"
+            else:
+                source = "环境变量"
             self.status_label.setText(
                 f"DeepSeek：已配置（{self._model()}，密钥来自{source}）"
             )

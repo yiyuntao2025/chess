@@ -31,6 +31,12 @@ class GameTree:
             self.start_fen = checker.to_fen()
         else:
             self.start_fen = ChessGame.START_FEN
+        fields = self.start_fen.split()
+        self._start_turn = fields[1] if len(fields) > 1 else "w"
+        try:
+            self._start_fullmove = int(fields[5]) if len(fields) > 5 else 1
+        except ValueError:
+            self._start_fullmove = 1
         self.headers: dict[str, str] = {}
         self.result = ""
         self._next_id = 1
@@ -182,23 +188,22 @@ class GameTree:
         return self._nodes.get(node_id)
 
     def truncate_after(self, node: GameNode) -> None:
+        pending = list(node.children)
+        while pending:
+            child = pending.pop()
+            self._nodes.pop(child.node_id, None)
+            pending.extend(child.children)
         node.children.clear()
         self.current = node
 
     def move_number(self, node: GameNode) -> int:
-        fields = self.start_fen.split()
-        start_turn = fields[1] if len(fields) > 1 else "w"
-        try:
-            start_full = int(fields[5]) if len(fields) > 5 else 1
-        except ValueError:
-            start_full = 1
         before = max(0, node.ply - 1)
-        return start_full + (
-            before + (1 if start_turn == "b" else 0)
+        return self._start_fullmove + (
+            before + (1 if self._start_turn == "b" else 0)
         ) // 2
 
     def to_dict(self) -> dict:
-        def encode(node: GameNode) -> dict:
+        def encode_node(node: GameNode) -> dict:
             return {
                 "move": (
                     ChessGame.move_to_uci(node.move)
@@ -207,14 +212,23 @@ class GameTree:
                 ),
                 "comment": node.comment,
                 "nags": list(node.nags),
-                "children": [encode(child) for child in node.children],
+                "children": [],
             }
+
+        root_data = encode_node(self.root)
+        pending: list[tuple[GameNode, dict]] = [(self.root, root_data)]
+        while pending:
+            node, payload = pending.pop()
+            for child in node.children:
+                child_data = encode_node(child)
+                payload["children"].append(child_data)
+                pending.append((child, child_data))
 
         return {
             "start_fen": self.start_fen,
             "headers": dict(self.headers),
             "result": self.result,
-            "root": encode(self.root),
+            "root": root_data,
             "current": self.path_indices(self.current),
         }
 
@@ -230,35 +244,60 @@ class GameTree:
         if not isinstance(root_data, dict):
             raise ValueError("棋谱树根节点无效")
 
-        def decode(parent: GameNode, payload: dict) -> None:
-            children = payload.get("children", [])
-            if not isinstance(children, list):
-                raise ValueError("棋谱树子节点无效")
-            for child in children:
-                if not isinstance(child, dict):
-                    raise ValueError("棋谱树节点无效")
-                uci = str(child.get("move") or "")
-                game = tree.build_game(parent)
-                move = game.find_move_by_uci(uci) if uci else None
-                if move is None:
-                    raise ValueError(f"无法恢复着法：{uci}")
-                nags: list[int] = []
-                raw_nags = child.get("nags", [])
-                if isinstance(raw_nags, list):
-                    for value in raw_nags:
-                        if isinstance(value, int) and not isinstance(value, bool):
-                            nags.append(value)
-                node = tree.append_move(
+        game = tree.build_game(tree.root)
+        pending: list[tuple[GameNode, dict, ChessGame, int, list]] = [
+            (tree.root, root_data, game, 0, [])
+        ]
+        while pending:
+            parent, payload, current_game, index, children = pending[-1]
+            if index == 0:
+                raw_children = payload.get("children", [])
+                if not isinstance(raw_children, list):
+                    raise ValueError("棋谱树子节点无效")
+                children = raw_children
+                pending[-1] = (
                     parent,
-                    move,
-                    game.san_for_move(move),
-                    game.turn,
-                    comment=str(child.get("comment") or ""),
-                    nags=nags,
+                    payload,
+                    current_game,
+                    index,
+                    children,
                 )
-                decode(node, child)
-
-        decode(tree.root, root_data)
+            if index >= len(children):
+                pending.pop()
+                if pending:
+                    pending[-1][2].undo_move()
+                continue
+            child = children[index]
+            pending[-1] = (
+                parent,
+                payload,
+                current_game,
+                index + 1,
+                children,
+            )
+            if not isinstance(child, dict):
+                raise ValueError("棋谱树节点无效")
+            uci = str(child.get("move") or "")
+            move = current_game.find_move_by_uci(uci) if uci else None
+            if move is None:
+                raise ValueError(f"无法恢复着法：{uci}")
+            nags: list[int] = []
+            raw_nags = child.get("nags", [])
+            if isinstance(raw_nags, list):
+                for value in raw_nags:
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        nags.append(value)
+            turn = current_game.turn
+            current_game.make_move(move)
+            node = tree.append_move(
+                parent,
+                move,
+                current_game.san_history[-1],
+                turn,
+                comment=str(child.get("comment") or ""),
+                nags=nags,
+            )
+            pending.append((node, child, current_game, 0, []))
 
         headers = data.get("headers")
         if isinstance(headers, dict):

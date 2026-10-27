@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import NamedTuple, Optional
 
 
 BOARD_SIZE = 8
@@ -24,6 +24,16 @@ class Move:
     is_en_passant: bool = False
 
 
+class MoveState(NamedTuple):
+    color: str
+    captured: Optional[str]
+    ep_captured: Optional[str]
+    castling: str
+    ep_target: Optional[tuple[int, int]]
+    halfmove_clock: int
+    fullmove_number: int
+
+
 class ChessGame:
     START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
@@ -33,7 +43,7 @@ class ChessGame:
     def reset(self) -> None:
         self.start_fen = self.START_FEN
         self._load_fen(self.START_FEN)
-        self.history: list[tuple[dict, Move]] = []
+        self.history: list[tuple[MoveState, Move]] = []
         self.san_history: list[str] = []
 
     def load_fen(self, fen: str) -> None:
@@ -212,10 +222,13 @@ class ChessGame:
         color = self.color_of(piece)
         legal: list[Move] = []
         for move in self._pseudo_legal_moves(row, col):
-            snapshot = self._snapshot()
-            self._apply_move(move)
-            allowed = not self.in_check(color)
-            self._restore(snapshot)
+            state = self._apply_move_undoable(move)
+            if state is None:
+                continue
+            try:
+                allowed = not self.in_check(color)
+            finally:
+                self._undo_move_checked(state, move)
             if allowed:
                 legal.append(move)
         return legal
@@ -275,13 +288,8 @@ class ChessGame:
     def captured_pieces(self) -> tuple[list[str], list[str]]:
         captured_by_white: list[str] = []
         captured_by_black: list[str] = []
-        for snapshot, move in self.history:
-            snapshot_board = snapshot["board"]
-            if move.is_en_passant:
-                row, col = move.from_row, move.to_col
-            else:
-                row, col = move.to_row, move.to_col
-            piece = snapshot_board[row][col]
+        for state, move in self.history:
+            piece = state.ep_captured if move.is_en_passant else state.captured
             if piece is None:
                 continue
             if piece.islower():
@@ -311,15 +319,17 @@ class ChessGame:
 
     def make_move(self, move: Move) -> None:
         piece = self.board[move.from_row][move.from_col]
-        san = self._san_base(move) if piece is not None else ""
-        snapshot = self._snapshot()
-        self._apply_move(move)
-        if piece is not None:
-            opponent = self.turn
-            if self.in_check(opponent):
-                san += "#" if self.is_checkmate(opponent) else "+"
-            self.san_history.append(san)
-        self.history.append((snapshot, move))
+        if piece is None:
+            return
+        san = self._san_base(move)
+        state = self._apply_move_undoable(move)
+        if state is None:
+            return
+        opponent = self.turn
+        if self.in_check(opponent):
+            san += "#" if self.is_checkmate(opponent) else "+"
+        self.san_history.append(san)
+        self.history.append((state, move))
         key = self._position_key()
         self.position_counts[key] = self.position_counts.get(key, 0) + 1
 
@@ -333,10 +343,10 @@ class ChessGame:
         else:
             self.position_counts.pop(current_key, None)
 
-        snapshot, move = self.history.pop()
+        state, move = self.history.pop()
         if self.san_history:
             self.san_history.pop()
-        self._restore(snapshot)
+        self._undo_move_checked(state, move)
         return move
 
     @property
@@ -434,12 +444,15 @@ class ChessGame:
         if piece is None:
             return ""
         san = self._san_base(move)
-        snapshot = self._snapshot()
-        self._apply_move(move)
-        opponent = self.turn
-        if self.in_check(opponent):
-            san += "#" if self.is_checkmate(opponent) else "+"
-        self._restore(snapshot)
+        state = self._apply_move_undoable(move)
+        if state is None:
+            return san
+        try:
+            opponent = self.turn
+            if self.in_check(opponent):
+                san += "#" if self.is_checkmate(opponent) else "+"
+        finally:
+            self._undo_move_checked(state, move)
         return san
 
     def result_tag(self) -> str:
@@ -509,39 +522,28 @@ class ChessGame:
         capture_mark = "x" if is_capture else ""
         return f"{piece_type}{disambiguation}{capture_mark}{destination}"
 
-    def _snapshot(self) -> dict:
-        return {
-            "board": [row[:] for row in self.board],
-            "turn": self.turn,
-            "castling": self.castling,
-            "ep_target": self.ep_target,
-            "halfmove_clock": self.halfmove_clock,
-            "fullmove_number": self.fullmove_number,
-        }
-
-    def _restore(self, snapshot: dict) -> None:
-        self.board = [row[:] for row in snapshot["board"]]
-        self.turn = snapshot["turn"]
-        self.castling = snapshot["castling"]
-        self.ep_target = snapshot["ep_target"]
-        self.halfmove_clock = snapshot["halfmove_clock"]
-        self.fullmove_number = snapshot["fullmove_number"]
-
-    def _apply_move(self, move: Move) -> None:
+    def _apply_move_undoable(self, move: Move) -> Optional[MoveState]:
         board = self.board
         piece = board[move.from_row][move.from_col]
         if piece is None:
-            return
+            return None
 
         color = self.color_of(piece)
         piece_type = piece.upper()
-        captured = board[move.to_row][move.to_col]
+        target_piece = board[move.to_row][move.to_col]
+        captured = target_piece
+        ep_captured: Optional[str] = None
+        old_castling = self.castling
+        old_ep_target = self.ep_target
+        old_halfmove = self.halfmove_clock
+        old_fullmove = self.fullmove_number
 
         board[move.from_row][move.from_col] = None
         board[move.to_row][move.to_col] = piece
 
         if move.is_en_passant:
-            captured = board[move.from_row][move.to_col]
+            ep_captured = board[move.from_row][move.to_col]
+            captured = ep_captured
             board[move.from_row][move.to_col] = None
 
         if move.is_castle:
@@ -576,6 +578,37 @@ class ChessGame:
         if color == "b":
             self.fullmove_number += 1
         self.turn = self.opponent(color)
+        return MoveState(
+            color=color,
+            captured=target_piece,
+            ep_captured=ep_captured,
+            castling=old_castling,
+            ep_target=old_ep_target,
+            halfmove_clock=old_halfmove,
+            fullmove_number=old_fullmove,
+        )
+
+    def _undo_move_checked(self, state: MoveState, move: Move) -> None:
+        board = self.board
+        piece = board[move.to_row][move.to_col]
+        if move.promotion:
+            piece = "P" if state.color == "w" else "p"
+        board[move.from_row][move.from_col] = piece
+        if move.is_en_passant:
+            board[move.to_row][move.to_col] = None
+            board[move.from_row][move.to_col] = state.ep_captured
+        else:
+            board[move.to_row][move.to_col] = state.captured
+        if move.is_castle:
+            row = move.from_row
+            rook_from_col, rook_to_col = (7, 5) if move.to_col > move.from_col else (0, 3)
+            board[row][rook_from_col] = board[row][rook_to_col]
+            board[row][rook_to_col] = None
+        self.castling = state.castling
+        self.ep_target = state.ep_target
+        self.halfmove_clock = state.halfmove_clock
+        self.fullmove_number = state.fullmove_number
+        self.turn = state.color
 
     @staticmethod
     def _remove_rook_right(rights: set[str], row: int, col: int) -> None:

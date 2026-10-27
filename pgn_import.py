@@ -58,7 +58,8 @@ def parse_pgn(pgn_text: str) -> GameTree:
     tree.headers = headers
 
     current: GameNode = tree.root
-    stack: list[GameNode] = []
+    game = tree.build_game(current)
+    stack: list[tuple[GameNode, ChessGame]] = []
     result = ""
     move_count = 0
 
@@ -67,13 +68,14 @@ def parse_pgn(pgn_text: str) -> GameTree:
         if not token:
             continue
         if token == "(":
-            stack.append(current)
+            stack.append((current, game))
             current = current.parent or tree.root
+            game = tree.build_game(current)
             continue
         if token == ")":
             if not stack:
                 raise PGNImportError("PGN 变例括号不匹配")
-            current = stack.pop()
+            current, game = stack.pop()
             continue
         if token.startswith("$"):
             try:
@@ -120,17 +122,18 @@ def parse_pgn(pgn_text: str) -> GameTree:
             result = token
             break
 
-        game = tree.build_game(current)
         move = game.find_move_by_san(token)
         if move is None:
             raise PGNImportError(
                 f"第 {move_count + 1} 着无法识别或非法：{token}"
             )
+        turn = game.turn
+        game.make_move(move)
         node = tree.append_move(
             current,
             move,
-            game.san_for_move(move),
-            game.turn,
+            game.san_history[-1],
+            turn,
         )
         if suffix:
             node.nags.append(SUFFIX_NAGS[suffix])
