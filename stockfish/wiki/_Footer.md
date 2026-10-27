@@ -1,1 +1,0 @@
-[Stockfish Docs](https://official-stockfish.github.io/docs/stockfish-wiki/Home.html)

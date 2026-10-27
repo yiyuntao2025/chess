@@ -27,7 +27,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Stockfish 默认从 `stockfish/` 目录查找，也可以通过环境变量 `STOCKFISH_PATH` 指定：
+Stockfish 不随仓库分发。请自行下载对应平台的引擎，放入本地的 `stockfish/` 目录（该目录已被 Git 忽略），也可以通过环境变量 `STOCKFISH_PATH` 指定：
 
 ```powershell
 $env:STOCKFISH_PATH = "C:\path\to\stockfish.exe"
@@ -74,4 +74,4 @@ python -m unittest discover -s tests -v
 
 本项目代码采用 MIT License，见 `LICENSE`。
 
-`stockfish/` 目录包含第三方 Stockfish 引擎及其源码，遵循 GPLv3，详见 `stockfish/Copying.txt`。
+Stockfish 为第三方软件，遵循 GPLv3。仓库不包含 Stockfish 文件，使用时请自行获取并遵守其许可证。
